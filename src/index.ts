@@ -23,8 +23,18 @@ app.get("/health", (c) => {
   });
 });
 
-// Root info
+import { readFileSync, existsSync } from "node:fs";
+import { join } from "node:path";
+
+// Root info & Web DApp
 app.get("/", (c) => {
+  const accept = c.req.header("accept") || "";
+  if (accept.includes("text/html")) {
+    const htmlPath = join(process.cwd(), "public", "index.html");
+    if (existsSync(htmlPath)) {
+      return c.html(readFileSync(htmlPath, "utf-8"));
+    }
+  }
   return c.json({
     service: "RugShield 402",
     description: "Low-latency token honeypot detection & tax simulation on Base for AI agents",
@@ -34,8 +44,17 @@ app.get("/", (c) => {
     endpoints: {
       scan: "POST /v1/scan",
       mcp: "GET /mcp",
+      app: "GET /app",
     },
   });
+});
+
+app.get("/app", (c) => {
+  const htmlPath = join(process.cwd(), "public", "index.html");
+  if (existsSync(htmlPath)) {
+    return c.html(readFileSync(htmlPath, "utf-8"));
+  }
+  return c.redirect("/");
 });
 
 // Machine Discovery Manifest (RFC/x402 standard)
