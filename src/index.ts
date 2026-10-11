@@ -316,6 +316,17 @@ app.post("/v1/scan", async (c) => {
   }
 });
 
+// Public Live Stream Endpoint: GET /v1/recent-scans
+app.get("/v1/recent-scans", async (c) => {
+  const { RECENT_SCANS } = await import("./workers/autonomous_scanner.js");
+  return c.json({
+    status: "ok",
+    network: "base",
+    total: RECENT_SCANS.length,
+    scans: RECENT_SCANS,
+  });
+});
+
 const server = serve(
   {
     fetch: app.fetch,
@@ -340,6 +351,13 @@ const server = serve(
         })
         .catch((err) => console.error("[telegram-bot] Failed to initialize:", err));
     }
+
+    // Auto-start Autonomous Base Token Scanner Daemon
+    import("./workers/autonomous_scanner.js")
+      .then(({ startAutonomousScanner }) => {
+        startAutonomousScanner(10 * 60 * 1000);
+      })
+      .catch((err) => console.error("[autonomous-scanner] Failed to start:", err));
   }
 );
 
