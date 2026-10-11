@@ -1,4 +1,4 @@
-# @ak10082247-max/plugin-rugshield-402 🛡️
+# @kurox_real/plugin-rugshield-402 🛡️
 
 **Autonomous Pre-Swap Honeypot Detection & Tax Verification Plugin for ElizaOS Agents on Base**
 
@@ -13,18 +13,18 @@ This plugin provides the `PRE_SWAP_RISK_CHECK` action for ElizaOS agents. Before
 
 ## Installation
 ```bash
-npm install @ak10082247-max/plugin-rugshield-402
+npm install @kurox_real/plugin-rugshield-402
 # or
-bun add @ak10082247-max/plugin-rugshield-402
+bun add @kurox_real/plugin-rugshield-402
 # or
-pnpm add @ak10082247-max/plugin-rugshield-402
+pnpm add @kurox_real/plugin-rugshield-402
 ```
 
 ## Agent Configuration
 Import and add `rugshieldPlugin` to your ElizaOS agent's character file:
 
 ```typescript
-import { rugshieldPlugin } from "@ak10082247-max/plugin-rugshield-402";
+import { rugshieldPlugin } from "@kurox_real/plugin-rugshield-402";
 
 export const defaultCharacter = {
   name: "DeFiTrader",
@@ -37,7 +37,7 @@ Or in JSON character configuration:
 ```json
 {
   "name": "DeFiTrader",
-  "plugins": ["@ak10082247-max/plugin-rugshield-402"]
+  "plugins": ["@kurox_real/plugin-rugshield-402"]
 }
 ```
 

@@ -1,5 +1,5 @@
 {
-  "name": "@ak10082247-max/plugin-rugshield-402",
+  "name": "@kurox_real/plugin-rugshield-402",
   "version": "1.0.0",
   "description": "RugShield 402 DEX honeypot detection, buy/sell tax simulation, and pool liquidity verification action for ElizaOS agents on Base (x402 gated).",
   "type": "module",
@@ -33,7 +33,7 @@
     "defi",
     "security"
   ],
-  "author": "ak10082247-max",
+  "author": "kurox_real",
   "license": "MIT",
   "publishConfig": {
     "access": "public"
