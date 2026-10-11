@@ -45,8 +45,23 @@ app.get("/", (c) => {
       scan: "POST /v1/scan",
       mcp: "GET /mcp",
       app: "GET /app",
+      llms: "GET /llms.txt",
     },
   });
+});
+
+app.get("/llms.txt", (c) => {
+  const filePath = join(process.cwd(), "public", "llms.txt");
+  if (existsSync(filePath)) {
+    return c.text(readFileSync(filePath, "utf-8"), 200, {
+      "Content-Type": "text/markdown; charset=utf-8",
+    });
+  }
+  return c.text("# RugShield 402 - Honeypot & Tax Simulation API on Base Mainnet\nEndpoint: POST /v1/scan", 200);
+});
+
+app.get("/llms-full.txt", (c) => {
+  return c.redirect("/llms.txt");
 });
 
 app.get("/app", (c) => {
