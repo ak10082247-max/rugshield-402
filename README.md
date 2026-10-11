@@ -1,95 +1,149 @@
 # RugShield 402 🛡️
 
-**Autonomous DEX Honeypot Detection & Tax Simulation Engine for AI Agents on Base**  
-Gated by the **Coinbase x402 Payment Protocol** ($0.005 USDC per call on Base Mainnet).
+[![Base Mainnet](https://img.shields.io/badge/Base-Mainnet_8453-0052FF.svg?logo=coinbase&logoColor=white)](https://basescan.org)
+[![x402 Protocol](https://img.shields.io/badge/Protocol-x402_Micro--Payment-10b981.svg)](https://rugshield-402.onrender.com/.well-known/x402.json)
+[![ElizaOS Plugin](https://img.shields.io/npm/v/@kurox_real/plugin-rugshield-402.svg?label=elizaos-plugin&color=blueviolet)](https://www.npmjs.com/package/@kurox_real/plugin-rugshield-402)
+[![AgentKit Action](https://img.shields.io/npm/v/@kurox_real/agentkit-rugshield-402.svg?label=agentkit-provider&color=blue)](https://www.npmjs.com/package/@kurox_real/agentkit-rugshield-402)
+[![Telegram Bot](https://img.shields.io/badge/Telegram-@RugShield402__bot-229ED9?logo=telegram&logoColor=white)](https://t.me/RugShield402_bot)
+[![Web DApp](https://img.shields.io/badge/Web_DApp-Live-00f0ff)](https://ak10082247-max.github.io/rugshield-402/)
+[![GitHub Release](https://img.shields.io/github/v/release/ak10082247-max/rugshield-402?color=success)](https://github.com/ak10082247-max/rugshield-402/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/ak10082247-max/rugshield-402)
-
----
-
-## ⚡ Specifications & Architecture
-- **Settlement Network**: Base Mainnet (`eip155:8453`)
-- **Settlement Asset**: USDC on Base (`0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`)
-- **Price per Scan**: $0.005 USDC (`5000` micro-units)
-- **Merchant Address**: `0x73279fa4BadA7CAC888c62CDa4f5c8104765f6f1`
-- **Protocol**: HTTP 402 Payment Required with EIP-712 Transfer Authorization
+> **Autonomous DEX Honeypot Detection & Pre-Swap Simulation Engine for AI Agents on Base.**  
+> Gated natively by the **HTTP 402 Payment Required** micro-payment standard ($0.005 USDC per scan on Base Mainnet).
 
 ---
 
-## 🚀 Core API Endpoints
+## ⚡ Live Deployments & Distribution Channels
 
-### 1. `POST /v1/scan` (Paid: $0.005 USDC)
-Simulates DEX buy/sell orders on Base, calculates buy & sell taxes in basis points (bps), inspects bytecode for blacklist/trading restrictions, and queries Aerodrome & Uniswap v3 pool depths.
-
-**Request Payload:**
-```json
-{
-  "token_address": "0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed",
-  "chain_id": 8453,
-  "simulate_sell": true
-}
-```
-
-**Response (HTTP 200):**
-```json
-{
-  "token": "0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed",
-  "symbol": "DEGEN",
-  "is_honeypot": false,
-  "buy_tax_bps": 0,
-  "sell_tax_bps": 0,
-  "liquidity_usd": 68400,
-  "risk_score": 0.02,
-  "recommendation": "SAFE_TO_SWAP",
-  "attestation": "rugshield_verified_8453_0x4ed4e8_1740000000",
-  "timestamp": 1740000000
-}
-```
-
-### 2. `GET /health` (Free)
-Returns health check status for container keep-alive monitoring.
-
-### 3. `GET /.well-known/x402.json` (Free)
-Machine-readable discovery manifest according to the x402 specification.
+| Channel | Target User | Link / Install | Status |
+|---|---|---|---|
+| 🌐 **Web Scanner DApp** | Retail traders & degens | [ak10082247-max.github.io/rugshield-402](https://ak10082247-max.github.io/rugshield-402/) | **Live** |
+| 🤖 **Telegram Scanner Bot** | Groups, channels, alpha callers | [@RugShield402_bot](https://t.me/RugShield402_bot) | **Live** |
+| 📦 **ElizaOS Agent Plugin** | ElizaOS autonomous trading bots | `npm i @kurox_real/plugin-rugshield-402` | **Live on npm** |
+| ⚡ **Coinbase AgentKit** | Base AgentKit & LangChain bots | `npm i @kurox_real/agentkit-rugshield-402` | **Live on npm** |
+| 🛠️ **Model Context Protocol**| Claude Desktop, Cursor, Windsurf | [server-card.json](https://rugshield-402.onrender.com/.well-known/mcp/server-card.json) | **Live on Render** |
+| 📡 **Cloud Microservice** | REST API & custom scripts | `https://rugshield-402.onrender.com/v1/scan` | **Live 24/7** |
 
 ---
 
-## 🤖 MCP Server Integration
+## 🏛️ System Architecture
 
-Add to your `claude_desktop_config.json` or Cursor MCP settings:
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Trader as Autonomous Agent / User
+    participant RugShield as RugShield 402 Gateway
+    participant Base as Base Mainnet (USDC)
+    participant Simulator as EVM Bytecode Simulator
+    participant DEX as Aerodrome / Uniswap v3
 
-```json
-{
-  "mcpServers": {
-    "rugshield": {
-      "command": "node",
-      "args": ["<PATH_TO_RUGSHIELD>/dist/mcp/server.js"],
-      "env": {
-        "BUYER_PRIVATE_KEY": "0x..."
-      }
-    }
-  }
-}
+    Trader->>RugShield: POST /v1/scan (Target Token Address)
+    RugShield-->>Trader: HTTP 402 Payment Required (EIP-712 Permit Schema)
+    Trader->>RugShield: Resubmit with Signed Permit / Tx Hash
+    RugShield->>Base: Verify Settlement ($0.005 USDC to 0x73279...)
+    Base-->>RugShield: Confirmed (1 Block / ~2 sec)
+    RugShield->>Simulator: Fork State & Simulate Buy/Sell Transfers
+    Simulator->>DEX: Query Liquidity Depth & Fee Tiers
+    Simulator-->>RugShield: Honeypot Verdict + Tax Rates + Liquidity USD
+    RugShield-->>Trader: Cryptographic Risk Attestation & Recommendation
 ```
 
 ---
 
-## 🔌 Ecosystem Plugins
+## 📦 Quickstart: Developer Integrations
 
-### ElizaOS (`/plugins/eliza-rugshield`)
-Drop-in action `PRE_SWAP_RISK_CHECK` that hooks into trading execution loops and queries `/v1/scan`.
+### 1. ElizaOS Autonomous Agent Plugin
 
-### Coinbase AgentKit (`/plugins/agentkit-rugshield`)
-Action provider `rugshield_pre_swap_check` for automated agent protection.
-
----
-
-## ⏱️ Anti-Cold-Start Heartbeat Trigger
-
-RugShield has a built-in internal heartbeat daemon pinging `/health` every 9 minutes. For external zero-latency monitoring, configure an external cron trigger (e.g. UptimeRobot or Cron-Job.org):
+Install from the global npm registry:
 
 ```bash
-curl -s -X GET "https://rugshield-402.onrender.com/health" -H "User-Agent: UptimeRobot/2.0"
+npm install @kurox_real/plugin-rugshield-402
 ```
 
-Recommended interval: Every 5 to 10 minutes.
+Register in your agent character definition:
+
+```typescript
+import { rugshieldPlugin } from "@kurox_real/plugin-rugshield-402";
+
+export const character = {
+  name: "AutonomousDeFiTrader",
+  plugins: [rugshieldPlugin],
+  // ... rest of character config
+};
+```
+
+When your agent evaluates a swap, it triggers the `PRE_SWAP_RISK_CHECK` action automatically.
+
+---
+
+### 2. Coinbase AgentKit (LangChain / Python / TS)
+
+Install the provider:
+
+```bash
+npm install @kurox_real/agentkit-rugshield-402
+```
+
+Initialize with AgentKit:
+
+```typescript
+import { rugshieldActionProvider } from "@kurox_real/agentkit-rugshield-402";
+import { AgentKit } from "@coinbase/agentkit";
+
+const agentKit = await AgentKit.from({
+  actionProviders: [rugshieldActionProvider()],
+});
+```
+
+---
+
+### 3. Direct HTTP API (cURL / Any Language)
+
+```bash
+curl -X POST https://rugshield-402.onrender.com/v1/scan \
+  -H "Content-Type: application/json" \
+  -d '{
+    "token_address": "0x4200000000000000000000000000000000000006",
+    "chain_id": 8453,
+    "simulate_sell": true
+  }'
+```
+
+---
+
+### 4. Python / Quantitative Bot Wrapper
+
+```python
+import requests
+
+def scan_token(token_address: str):
+    url = "https://rugshield-402.onrender.com/v1/scan"
+    res = requests.post(url, json={
+        "token_address": token_address,
+        "chain_id": 8453,
+        "simulate_sell": True
+    })
+    
+    if res.status_code == 402:
+        payment_info = res.json()
+        print("x402 Payment Challenge:", payment_info)
+        # Agent signs and includes payment permit
+    return res.json()
+```
+
+---
+
+## 🔒 Verified On-Chain Settlement
+
+- **Settlement Chain**: Base Mainnet (`eip155:8453`)
+- **Asset**: Native USDC (`0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`)
+- **Cost**: $0.005 USDC per verification
+- **Merchant Address**: [`0x73279fa4BadA7CAC888c62CDa4f5c8104765f6f1`](https://basescan.org/address/0x73279fa4BadA7CAC888c62CDa4f5c8104765f6f1)
+- **Sample Mainnet Settlement Tx**: [`0x80ab5a51f968bd845229d3abc98d5cedb28ba02647eac29004c20c663bd9f4a0`](https://basescan.org/tx/0x80ab5a51f968bd845229d3abc98d5cedb28ba02647eac29004c20c663bd9f4a0)
+
+---
+
+## 📄 License
+
+MIT © 2026 RugShield 402 Contributors.

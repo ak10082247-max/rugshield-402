@@ -4,10 +4,14 @@
   "description": "Low-latency token honeypot detection, buy/sell tax simulation, and pool liquidity verification for autonomous trading agents, gated by x402 on Base.",
   "type": "module",
   "main": "dist/index.js",
+  "bin": {
+    "rugshield": "./dist/bin/cli.js"
+  },
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
+    "scan": "tsx src/bin/cli.ts",
     "mcp": "tsx src/mcp/server.ts",
     "bot": "tsx scripts/start_telegram_bot.ts",
     "test": "tsx test/simulator.test.ts",
