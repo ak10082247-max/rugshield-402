@@ -81,6 +81,16 @@ const getDiscoveryManifest = (baseUrl: string) => ({
     facilitator: CONFIG.facilitator,
     scheme: "exact",
   },
+  bazaar: {
+    category: "security",
+    subcategories: ["defi", "honeypot-detection", "dex-simulation"],
+    tags: ["base", "agentkit", "elizaos", "usdc", "honeypot", "dex", "aerodrome", "uniswap"],
+    pricing_model: "per_call",
+    developer: {
+      github: "https://github.com/ak10082247-max/rugshield-402",
+      package: "@kurox_real/agentkit-rugshield-402",
+    },
+  },
   endpoints: [
     {
       path: "/v1/scan",

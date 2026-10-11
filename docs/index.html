@@ -356,10 +356,92 @@
       font-size: 0.85rem;
     }
 
-    .footer-wallet {
-      font-family: var(--font-mono);
+    .btn-share-x {
+      background: #1d9bf0;
+      color: #fff;
+      border: none;
+      padding: 0.6rem 1.2rem;
+      border-radius: 10px;
+      font-weight: 700;
+      font-size: 0.85rem;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all 0.2s;
+    }
+    .btn-share-x:hover {
+      background: #0c85d0;
+      transform: translateY(-1px);
+    }
+
+    .btn-basescan {
+      background: rgba(255, 255, 255, 0.06);
+      color: #93c5fd;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      padding: 0.6rem 1.2rem;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 0.85rem;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all 0.2s;
+    }
+    .btn-basescan:hover {
+      background: rgba(255, 255, 255, 0.12);
+    }
+
+    .live-feed-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 20px;
+      padding: 1.75rem;
+      backdrop-filter: blur(16px);
+      margin-bottom: 3rem;
+    }
+
+    .live-feed-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.85rem 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .live-feed-item:last-child {
+      border-bottom: none;
+    }
+
+    .pulse-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--safe);
+      display: inline-block;
+      box-shadow: 0 0 10px var(--safe);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(1.2); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+
+    .btn-quick-audit {
+      background: rgba(0, 82, 255, 0.2);
+      border: 1px solid rgba(0, 82, 255, 0.4);
       color: #60a5fa;
-      margin-top: 0.5rem;
+      padding: 0.35rem 0.75rem;
+      border-radius: 8px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-quick-audit:hover {
+      background: var(--primary);
+      color: #fff;
     }
   </style>
 </head>
@@ -436,9 +518,31 @@
           </div>
         </div>
 
-        <div style="font-size: 0.8rem; color: var(--text-muted); font-family: var(--font-mono);">
+        <div style="font-size: 0.8rem; color: var(--text-muted); font-family: var(--font-mono); margin-bottom: 1rem;">
           Attestation: <span id="resAttestation">verified_on_chain</span>
         </div>
+
+        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+          <button id="shareXBtn" class="btn-share-x" onclick="shareOnX()">
+            <span>🐦 Share Audit on X</span>
+          </button>
+          <a id="basescanBtn" href="https://basescan.org" target="_blank" class="btn-basescan">
+            <span>🔍 View on BaseScan</span>
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live Stream Card of Automated Base Audits -->
+    <div class="live-feed-card">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+        <h3 style="font-size: 1.15rem; font-weight: 800; display: flex; align-items: center; gap: 0.65rem;">
+          <span class="pulse-dot"></span> Live Audited Pools on Base (Automated Stream)
+        </h3>
+        <span style="font-size: 0.75rem; color: #60a5fa; font-family: var(--font-mono); background: rgba(0, 82, 255, 0.15); padding: 0.2rem 0.6rem; border-radius: 999px;">Autonomous Engine · 300s Polling</span>
+      </div>
+      <div id="liveFeedContainer">
+        <div style="color: var(--text-muted); font-size: 0.85rem; padding: 0.5rem 0;">Streaming live pool simulations from Base Mainnet...</div>
       </div>
     </div>
 
@@ -567,12 +671,59 @@ curl -X POST https://rugshield-402.onrender.com/v1/scan \
           badge.innerText = 'SAFE TO SWAP';
         }
 
+        const basescanLink = document.getElementById('basescanBtn');
+        if (basescanLink) {
+          basescanLink.href = 'https://basescan.org/token/' + addr;
+        }
+
         container.style.display = 'block';
       } catch (err) {
         alert('Simulation error: ' + err.message);
       } finally {
         btn.disabled = false;
         btn.innerText = 'Scan Token';
+      }
+    }
+
+    function shareOnX() {
+      const symbol = document.getElementById('resSymbol').innerText || 'TOKEN';
+      const tax = document.getElementById('resSellTax').innerText || '0.0%';
+      const liq = document.getElementById('resLiquidity').innerText || '$0';
+      const isSafe = document.getElementById('resBadge').innerText.includes('SAFE');
+      const verdict = isSafe ? 'SAFE TO SWAP ✅' : 'HIGH RISK / TRAP 🚨';
+      const addr = document.getElementById('tokenInput').value.trim();
+
+      const text = `Just audited $${symbol} on @base with RugShield 402 🛡️\n\n• Verdict: ${verdict}\n• Sell Tax: ${tax}\n• Verified DEX Liquidity: ${liq}\n• Token: ${addr}\n\nPre-swap simulation for AI agents via HTTP 402:\nhttps://ak10082247-max.github.io/rugshield-402/`;
+      window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, '_blank');
+    }
+
+    async function loadRecentScans() {
+      try {
+        const res = await fetch('https://rugshield-402.onrender.com/v1/recent-scans');
+        if (!res.ok) return;
+        const data = await res.json();
+        const container = document.getElementById('liveFeedContainer');
+        if (!container || !data.scans || data.scans.length === 0) return;
+
+        container.innerHTML = data.scans.slice(0, 6).map(s => `
+          <div class="live-feed-item">
+            <div style="display: flex; gap: 0.75rem; align-items: center;">
+              <span class="pulse-dot" style="background: ${s.is_honeypot ? 'var(--danger)' : 'var(--safe)'}; box-shadow: 0 0 8px ${s.is_honeypot ? 'var(--danger)' : 'var(--safe)'};"></span>
+              <div>
+                <div style="font-weight: 700; font-size: 0.95rem; color: #fff;">${s.name} (${s.symbol})</div>
+                <div style="font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);">${s.pool_name} · ${s.dex}</div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 0.75rem; align-items: center;">
+              <span style="font-size: 0.8rem; font-family: var(--font-mono); font-weight: 600; color: ${s.is_honeypot ? 'var(--danger)' : 'var(--safe)'};">
+                ${s.is_honeypot ? 'HONEYPOT' : (s.sell_tax_bps / 100).toFixed(1) + '% tax'}
+              </span>
+              <button class="btn-quick-audit" onclick="setToken('${s.token_address}');">Audit</button>
+            </div>
+          </div>
+        `).join('');
+      } catch (e) {
+        console.warn('Could not load recent scans', e);
       }
     }
 
@@ -589,6 +740,8 @@ curl -X POST https://rugshield-402.onrender.com/v1/scan \
 
     window.addEventListener('DOMContentLoaded', () => {
       runScan();
+      loadRecentScans();
+      setInterval(loadRecentScans, 20000);
     });
   </script>
 </body>
