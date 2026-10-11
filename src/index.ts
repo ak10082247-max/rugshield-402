@@ -185,6 +185,14 @@ app.get("/.well-known/mcp", (c) => {
   return c.json(serverCard);
 });
 
+app.get("/server-card.json", (c) => {
+  return c.json(serverCard);
+});
+
+app.get("/mcp/server-card.json", (c) => {
+  return c.json(serverCard);
+});
+
 // MCP discovery and inspection endpoint
 app.get("/mcp", (c) => {
   return c.json({

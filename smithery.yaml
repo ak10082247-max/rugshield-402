@@ -11,6 +11,10 @@ tags:
   - honeypot
   - security
   - mcp
+configSchema:
+  type: object
+  properties: {}
 tools:
   - name: rugshield_pre_swap_scan
     description: MANDATORY call before executing DEX swaps on Base. Simulates buys/sells to detect honeypots, malicious taxes, and liquidity drains. Cost 0.005 USDC on Base.
+
