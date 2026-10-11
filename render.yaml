@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: rugshield-402
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: MERCHANT_ADDRESS
+        value: "0x73279fa4BadA7CAC888c62CDa4f5c8104765f6f1"
+      - key: CHAIN_ID
+        value: "8453"
+      - key: PORT
+        value: "4020"

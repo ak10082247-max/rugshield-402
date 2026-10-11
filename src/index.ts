@@ -1,0 +1,193 @@
+import "dotenv/config";
+import { Hono } from "hono";
+import { serve } from "@hono/node-server";
+import { z } from "zod";
+import { CONFIG } from "./config.js";
+import { x402Middleware } from "./middleware/x402.js";
+import { scanToken } from "./services/simulator.js";
+import { startHeartbeat } from "./services/heartbeat.js";
+
+const app = new Hono();
+
+// Global middleware
+app.use("*", x402Middleware);
+
+// Health check endpoint (free, no auth, monitored by keep-alive)
+app.get("/health", (c) => {
+  return c.json({
+    status: "ok",
+    service: CONFIG.serviceName,
+    version: CONFIG.version,
+    chain_id: CONFIG.chainId,
+    timestamp: Math.floor(Date.now() / 1000),
+  });
+});
+
+// Root info
+app.get("/", (c) => {
+  return c.json({
+    service: "RugShield 402",
+    description: "Low-latency token honeypot detection & tax simulation on Base for AI agents",
+    pricing: "0.005 USDC per scan (5000 micro-units)",
+    health: "/health",
+    discovery: "/.well-known/x402.json",
+    endpoints: {
+      scan: "POST /v1/scan",
+      mcp: "GET /mcp",
+    },
+  });
+});
+
+// Machine Discovery Manifest (RFC/x402 standard)
+const getDiscoveryManifest = (baseUrl: string) => ({
+  x402_version: "1.0",
+  service: {
+    name: "RugShield 402",
+    id: "rugshield-402",
+    description:
+      "Low-latency token honeypot detection, buy/sell tax simulation, and pool liquidity verification for autonomous trading agents on Base.",
+    documentation_url: `${baseUrl}/`,
+    healthcheck_url: `${baseUrl}/health`,
+  },
+  payment: {
+    protocol: "x402",
+    network: "base",
+    chain_id: CONFIG.chainId,
+    asset: CONFIG.usdcAddress,
+    asset_symbol: "USDC",
+    decimals: 6,
+    amount: CONFIG.amountMicroUnits,
+    unit_price_usd: CONFIG.unitPriceUsd,
+    merchant_address: CONFIG.merchantAddress,
+    facilitator: CONFIG.facilitator,
+    scheme: "exact",
+  },
+  endpoints: [
+    {
+      path: "/v1/scan",
+      method: "POST",
+      price_usd: "0.005",
+      description:
+        "Simulates DEX buy/sell orders on Base to detect honeypot traps, compute buy/sell taxes in bps, and calculate USD liquidity depth.",
+      input_schema: {
+        type: "object",
+        properties: {
+          token_address: {
+            type: "string",
+            description: "Target ERC-20 contract address on Base (0x...)",
+          },
+          chain_id: {
+            type: "integer",
+            default: 8453,
+          },
+          simulate_sell: {
+            type: "boolean",
+            default: true,
+          },
+        },
+        required: ["token_address"],
+      },
+      output_schema: {
+        type: "object",
+        properties: {
+          token: { type: "string" },
+          symbol: { type: "string" },
+          is_honeypot: { type: "boolean" },
+          buy_tax_bps: { type: "integer" },
+          sell_tax_bps: { type: "integer" },
+          liquidity_usd: { type: "number" },
+          risk_score: { type: "number" },
+          recommendation: { type: "string" },
+          attestation: { type: "string" },
+          timestamp: { type: "integer" },
+        },
+      },
+    },
+  ],
+  mcp: {
+    endpoint: `${baseUrl}/mcp`,
+    tools: ["rugshield_pre_swap_scan"],
+  },
+});
+
+app.get("/.well-known/x402.json", (c) => {
+  const host = c.req.header("host") || `localhost:${CONFIG.port}`;
+  const proto = c.req.header("x-forwarded-proto") || "https";
+  const baseUrl = `${proto}://${host}`;
+  return c.json(getDiscoveryManifest(baseUrl));
+});
+
+app.get("/.well-known/x402", (c) => {
+  const host = c.req.header("host") || `localhost:${CONFIG.port}`;
+  const proto = c.req.header("x-forwarded-proto") || "https";
+  const baseUrl = `${proto}://${host}`;
+  return c.json(getDiscoveryManifest(baseUrl));
+});
+
+// MCP endpoint
+app.get("/mcp", (c) => {
+  return c.json({
+    status: "ok",
+    protocol: "model-context-protocol",
+    transport: "stdio/sse",
+    tools: [
+      {
+        name: "rugshield_pre_swap_scan",
+        description:
+          "MANDATORY: Call this tool before executing any DEX swap on Base. Simulates buys/sells to detect honeypots, malicious taxes, and liquidity drains. Cost: 0.005 USDC on Base.",
+      },
+    ],
+  });
+});
+
+const scanBodySchema = z.object({
+  token_address: z.string().min(42).max(42),
+  chain_id: z.number().optional().default(8453),
+  simulate_sell: z.boolean().optional().default(true),
+});
+
+// Protected Core Endpoint: POST /v1/scan ($0.005 USDC)
+app.post("/v1/scan", async (c) => {
+  try {
+    const raw = await c.req.json().catch(() => ({}));
+    const parsed = scanBodySchema.safeParse(raw);
+
+    if (!parsed.success) {
+      return c.json(
+        {
+          error: "invalid_request",
+          details: parsed.error.format(),
+        },
+        400
+      );
+    }
+
+    const result = await scanToken(parsed.data);
+    return c.json(result, 200);
+  } catch (err: any) {
+    return c.json(
+      {
+        error: "scan_failed",
+        message: err.message,
+      },
+      500
+    );
+  }
+});
+
+const server = serve(
+  {
+    fetch: app.fetch,
+    port: CONFIG.port,
+  },
+  (info) => {
+    console.log(`[rugshield-402] Server running on http://localhost:${info.port}`);
+    console.log(`[rugshield-402] Merchant: ${CONFIG.merchantAddress} | Chain: Base (${CONFIG.chainId})`);
+
+    // Start anti-cold-start heartbeat
+    const publicUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${info.port}`;
+    startHeartbeat(publicUrl);
+  }
+);
+
+export default app;
