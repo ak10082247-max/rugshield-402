@@ -1,0 +1,50 @@
+{
+  "name": "@ak10082247-max/plugin-rugshield-402",
+  "version": "1.0.0",
+  "description": "RugShield 402 DEX honeypot detection, buy/sell tax simulation, and pool liquidity verification action for ElizaOS agents on Base (x402 gated).",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "elizaos",
+    "eliza",
+    "plugin",
+    "rugshield",
+    "x402",
+    "base",
+    "usdc",
+    "honeypot",
+    "defi",
+    "security"
+  ],
+  "author": "ak10082247-max",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ak10082247-max/rugshield-402.git",
+    "directory": "plugins/eliza-rugshield"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}
