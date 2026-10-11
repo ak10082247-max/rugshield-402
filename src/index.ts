@@ -328,6 +328,18 @@ const server = serve(
     // Start anti-cold-start heartbeat
     const publicUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${info.port}`;
     startHeartbeat(publicUrl);
+
+    // Auto-start Telegram Bot if configured
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    if (botToken) {
+      import("./bot/telegram.js")
+        .then(({ RugShieldTelegramBot }) => {
+          const bot = new RugShieldTelegramBot(botToken);
+          bot.startPolling().catch((err) => console.error("[telegram-bot] Polling error:", err));
+          console.log("[rugshield-402] Telegram bot service started.");
+        })
+        .catch((err) => console.error("[telegram-bot] Failed to initialize:", err));
+    }
   }
 );
 

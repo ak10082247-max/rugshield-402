@@ -25,17 +25,26 @@ export class RugShieldTelegramBot {
     return `https://api.telegram.org/bot${this.botToken}`;
   }
 
-  async sendMessage(chatId: number, text: string, parseMode: "HTML" | "Markdown" = "HTML"): Promise<void> {
+  async sendMessage(
+    chatId: number,
+    text: string,
+    parseMode: "HTML" | "Markdown" = "HTML",
+    replyMarkup?: any
+  ): Promise<void> {
     try {
+      const payload: any = {
+        chat_id: chatId,
+        text,
+        parse_mode: parseMode,
+        disable_web_page_preview: true,
+      };
+      if (replyMarkup) {
+        payload.reply_markup = replyMarkup;
+      }
       await fetch(`${this.apiUrl}/sendMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text,
-          parse_mode: parseMode,
-          disable_web_page_preview: true,
-        }),
+        body: JSON.stringify(payload),
       });
     } catch (err) {
       console.error("[telegram-bot] Failed to send message:", err);
@@ -57,10 +66,22 @@ Paste any ERC-20 contract address on Base (0x...) or send <code>/scan 0x...</cod
 • Aerodrome & Uniswap v3 pool depth
 • x402 Protocol Gated ($0.005 USDC/scan)
 
-Merchant Payout Address:
+<b>Merchant Payout Address:</b>
 <code>${CONFIG.merchantAddress}</code>
 `;
-      await this.sendMessage(chatId, welcome);
+      const buttons = {
+        inline_keyboard: [
+          [
+            { text: "🌐 Open Web Scanner", url: "https://rugshield-402.onrender.com/app" },
+            { text: "📦 ElizaOS Plugin", url: "https://www.npmjs.com/package/@kurox_real/plugin-rugshield-402" },
+          ],
+          [
+            { text: "🤖 Coinbase AgentKit", url: "https://www.npmjs.com/package/@kurox_real/agentkit-rugshield-402" },
+            { text: "⚙️ API Docs (x402)", url: "https://rugshield-402.onrender.com/.well-known/x402.json" },
+          ],
+        ],
+      };
+      await this.sendMessage(chatId, welcome, "HTML", buttons);
       return;
     }
 
@@ -105,7 +126,20 @@ ${(result.risk_factors?.length ?? 0) > 0 ? `⚠️ <b>Risk Factors:</b>\n• ${(
 ⚡ <i>Protected by RugShield 402 on Base</i>
 `;
 
-      await this.sendMessage(chatId, report);
+      const scanButtons = {
+        inline_keyboard: [
+          [
+            { text: "📊 DexScreener", url: `https://dexscreener.com/base/${result.token}` },
+            { text: "🔍 BaseScan", url: `https://basescan.org/token/${result.token}` },
+          ],
+          [
+            { text: "🌐 Open Web Scanner", url: "https://rugshield-402.onrender.com/app" },
+            { text: "⚡ Integration API", url: "https://rugshield-402.onrender.com/.well-known/x402.json" },
+          ],
+        ],
+      };
+
+      await this.sendMessage(chatId, report, "HTML", scanButtons);
     } catch (err: any) {
       await this.sendMessage(chatId, `❌ <b>Scan Error:</b> ${err.message}`);
     }
