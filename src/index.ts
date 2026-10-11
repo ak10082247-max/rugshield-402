@@ -143,20 +143,134 @@ app.get("/.well-known/x402", (c) => {
   return c.json(getDiscoveryManifest(baseUrl));
 });
 
-// MCP endpoint
+const serverCard = {
+  serverInfo: {
+    name: "rugshield-402",
+    version: CONFIG.version,
+  },
+  description:
+    "Low-latency DEX honeypot detection, buy/sell tax simulation, and pool liquidity verification on Base for AI agents, gated by x402.",
+  tools: [
+    {
+      name: "rugshield_pre_swap_scan",
+      description:
+        "Simulates DEX buy/sell orders on Base to detect honeypots, compute buy/sell taxes in bps, and calculate USD liquidity depth before executing swaps. Cost: 0.005 USDC on Base.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          token_address: {
+            type: "string",
+            description: "Target ERC-20 contract address on Base (0x...)",
+          },
+          chain_id: {
+            type: "integer",
+            default: 8453,
+          },
+          simulate_sell: {
+            type: "boolean",
+            default: true,
+          },
+        },
+        required: ["token_address"],
+      },
+    },
+  ],
+};
+
+app.get("/.well-known/mcp/server-card.json", (c) => {
+  return c.json(serverCard);
+});
+
+app.get("/.well-known/mcp", (c) => {
+  return c.json(serverCard);
+});
+
+// MCP discovery and inspection endpoint
 app.get("/mcp", (c) => {
   return c.json({
     status: "ok",
     protocol: "model-context-protocol",
     transport: "stdio/sse",
-    tools: [
-      {
-        name: "rugshield_pre_swap_scan",
-        description:
-          "MANDATORY: Call this tool before executing any DEX swap on Base. Simulates buys/sells to detect honeypots, malicious taxes, and liquidity drains. Cost: 0.005 USDC on Base.",
-      },
-    ],
+    ...serverCard,
   });
+});
+
+// MCP JSON-RPC protocol endpoint (Smithery & MCP client scanner)
+app.post("/mcp", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const id = body.id ?? null;
+  const method = body.method;
+
+  if (method === "initialize") {
+    return c.json({
+      jsonrpc: "2.0",
+      id,
+      result: {
+        protocolVersion: "2024-11-05",
+        capabilities: {
+          tools: {},
+        },
+        serverInfo: {
+          name: "rugshield-402",
+          version: CONFIG.version,
+        },
+      },
+    });
+  }
+
+  if (method === "notifications/initialized") {
+    return c.json({ jsonrpc: "2.0", result: {} });
+  }
+
+  if (method === "ping") {
+    return c.json({ jsonrpc: "2.0", id, result: {} });
+  }
+
+  if (method === "tools/list") {
+    return c.json({
+      jsonrpc: "2.0",
+      id,
+      result: {
+        tools: serverCard.tools,
+      },
+    });
+  }
+
+  if (method === "tools/call") {
+    const params = body.params || {};
+    if (params.name === "rugshield_pre_swap_scan") {
+      const args = params.arguments || {};
+      const scanResult = await scanToken({
+        token_address: args.token_address,
+        chain_id: args.chain_id || 8453,
+        simulate_sell: args.simulate_sell ?? true,
+      });
+      return c.json({
+        jsonrpc: "2.0",
+        id,
+        result: {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(scanResult, null, 2),
+            },
+          ],
+        },
+      });
+    }
+  }
+
+  return c.json(
+    {
+      jsonrpc: "2.0",
+      id,
+      error: {
+        code: -32601,
+        message: `Method ${method} not found`,
+      },
+    },
+    200
+  );
 });
 
 const scanBodySchema = z.object({

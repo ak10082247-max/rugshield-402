@@ -100,7 +100,7 @@ ${result.is_honeypot ? "🚫 <b>HONEYPOT: YES (Transfers Disabled)</b>\n" : "�
 💧 <b>DEX Liquidity:</b> $${Number(result.liquidity_usd).toLocaleString()}
 ⚖️ <b>Risk Score:</b> ${(result.risk_score * 100).toFixed(0)} / 100
 
-${result.risk_factors.length > 0 ? `⚠️ <b>Risk Factors:</b>\n• ${result.risk_factors.join("\n• ")}\n` : ""}
+${(result.risk_factors?.length ?? 0) > 0 ? `⚠️ <b>Risk Factors:</b>\n• ${(result.risk_factors || []).join("\n• ")}\n` : ""}
 🔒 <i>Attestation: <code>${result.attestation}</code></i>
 ⚡ <i>Protected by RugShield 402 on Base</i>
 `;
