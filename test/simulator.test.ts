@@ -78,6 +78,12 @@ async function runTests() {
     assert.equal(res.recommendation, "SAFE_TO_SWAP");
   });
 
+  await test("Identifies Uniswap V2 factory and Clanker launchpad configuration", () => {
+    assert.equal(CONFIG.dex.uniswapV2Factory, "0x8909Dc15e40173Ff4699343b6eB8132c65e18eC6");
+    assert.equal(CONFIG.launchpads.clankerDeployer, "0x7b0c06043468469967dba22d1ef33f7b3ea7be50");
+    assert.equal(CONFIG.launchpads.virtualsDeployer, "0x0b3e328455c4059eeb9e3f84b5543f74e24e7e1b");
+  });
+
   console.log(`\nAll ${passed} integration tests successfully passed! ✨\n`);
 }
 

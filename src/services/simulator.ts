@@ -26,7 +26,14 @@ export interface ScanResponse {
   liquidity_usd: number;
   risk_score: number;
   risk_factors?: string[];
-  recommendation: "SAFE_TO_SWAP" | "CAUTION_HIGH_TAX" | "HIGH_RISK_LOW_LIQUIDITY" | "DANGER_HONEYPOT";
+  recommendation:
+    | "SAFE_TO_SWAP"
+    | "CAUTION_HIGH_TAX"
+    | "HIGH_RISK_LOW_LIQUIDITY"
+    | "DANGER_HONEYPOT"
+    | "BONDING_CURVE_ACTIVE";
+  platform?: "Clanker" | "Virtuals" | "Aerodrome" | "Uniswap" | "Standard";
+  in_bonding_curve?: boolean;
   attestation: string;
   timestamp: number;
 }
@@ -43,6 +50,16 @@ const aerodromePoolAbi = parseAbi([
 
 const uniswapV3FactoryAbi = parseAbi([
   "function getPool(address tokenA, address tokenB, uint24 fee) external view returns (address)",
+]);
+
+const uniswapV2FactoryAbi = parseAbi([
+  "function getPair(address tokenA, address tokenB) external view returns (address)",
+]);
+
+const uniswapV2PairAbi = parseAbi([
+  "function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)",
+  "function token0() external view returns (address)",
+  "function token1() external view returns (address)",
 ]);
 
 export async function scanToken(params: ScanRequest): Promise<ScanResponse> {
@@ -206,6 +223,61 @@ export async function scanToken(params: ScanRequest): Promise<ScanResponse> {
     }
   }
 
+  // Check Base Uniswap v2 / BaseSwap Factory (WETH & USDC pairs)
+  try {
+    const v2PairWeth = await publicClient.readContract({
+      address: CONFIG.dex.uniswapV2Factory,
+      abi: uniswapV2FactoryAbi,
+      functionName: "getPair",
+      args: [tokenAddress, CONFIG.wethAddress],
+    });
+
+    if (v2PairWeth && v2PairWeth !== "0x0000000000000000000000000000000000000000") {
+      const reserves = await publicClient.readContract({
+        address: v2PairWeth,
+        abi: uniswapV2PairAbi,
+        functionName: "getReserves",
+      });
+      const t0 = await publicClient.readContract({
+        address: v2PairWeth,
+        abi: uniswapV2PairAbi,
+        functionName: "token0",
+      });
+      const wethReserve = t0.toLowerCase() === CONFIG.wethAddress.toLowerCase() ? reserves[0] : reserves[1];
+      const wethNum = Number(formatUnits(wethReserve, 18));
+      estimatedLiquidityUsd += wethNum * WETH_PRICE_APPROX * 2;
+    }
+  } catch {
+    // continue
+  }
+
+  try {
+    const v2PairUsdc = await publicClient.readContract({
+      address: CONFIG.dex.uniswapV2Factory,
+      abi: uniswapV2FactoryAbi,
+      functionName: "getPair",
+      args: [tokenAddress, CONFIG.usdcAddress],
+    });
+
+    if (v2PairUsdc && v2PairUsdc !== "0x0000000000000000000000000000000000000000") {
+      const reserves = await publicClient.readContract({
+        address: v2PairUsdc,
+        abi: uniswapV2PairAbi,
+        functionName: "getReserves",
+      });
+      const t0 = await publicClient.readContract({
+        address: v2PairUsdc,
+        abi: uniswapV2PairAbi,
+        functionName: "token0",
+      });
+      const usdcReserve = t0.toLowerCase() === CONFIG.usdcAddress.toLowerCase() ? reserves[0] : reserves[1];
+      const usdcNum = Number(formatUnits(usdcReserve, 6));
+      estimatedLiquidityUsd += usdcNum * 2;
+    }
+  } catch {
+    // continue
+  }
+
   // If token is USDC or WETH or prominent token itself
   if (tokenAddress.toLowerCase() === CONFIG.usdcAddress.toLowerCase()) {
     estimatedLiquidityUsd = 100_000_000;
@@ -213,7 +285,34 @@ export async function scanToken(params: ScanRequest): Promise<ScanResponse> {
     estimatedLiquidityUsd = 250_000_000;
   }
 
-  // 5. Tax Simulation Calculations
+  // 5. Launchpad Attribution & Heuristics (Clanker & Virtuals Protocol)
+  let platform: "Clanker" | "Virtuals" | "Aerodrome" | "Uniswap" | "Standard" = "Standard";
+  let inBondingCurve = false;
+
+  const clankerDeployerHex = CONFIG.launchpads.clankerDeployer.toLowerCase().replace("0x", "");
+  const virtualsDeployerHex = CONFIG.launchpads.virtualsDeployer.toLowerCase().replace("0x", "");
+  const nameLower = name.toLowerCase();
+  const symbolLower = symbol.toLowerCase();
+
+  const isClanker =
+    bytecodeHex.includes(clankerDeployerHex) ||
+    nameLower.includes("clanker") ||
+    symbolLower.includes("clanker");
+
+  const isVirtuals =
+    bytecodeHex.includes(virtualsDeployerHex) ||
+    nameLower.includes("virtual") ||
+    symbolLower.includes("virtual");
+
+  if (isClanker) {
+    platform = "Clanker";
+  } else if (isVirtuals) {
+    platform = "Virtuals";
+  } else if (estimatedLiquidityUsd > 0) {
+    platform = "Uniswap";
+  }
+
+  // 6. Tax Simulation Calculations
   // Simulate buy order with 0.001 ETH and immediate sell back to pool
   let buyTaxBps = 0;
   let sellTaxBps = 0;
@@ -233,9 +332,14 @@ export async function scanToken(params: ScanRequest): Promise<ScanResponse> {
       estimatedLiquidityUsd = 850_000;
     }
   } else {
-    // If there is zero liquidity in standard pools, flag high risk
+    // If there is zero liquidity in standard pools, check launchpad bonding curves
     if (estimatedLiquidityUsd < 100) {
-      riskFactors.push("NO_VERIFIABLE_DEX_LIQUIDITY_ON_BASE");
+      if (isClanker || isVirtuals) {
+        riskFactors.push("ACTIVE_LAUNCHPAD_BONDING_CURVE");
+        inBondingCurve = true;
+      } else {
+        riskFactors.push("NO_VERIFIABLE_DEX_LIQUIDITY_ON_BASE");
+      }
     }
 
     if (hasBlacklistOrTradingToggle) {
@@ -250,12 +354,15 @@ export async function scanToken(params: ScanRequest): Promise<ScanResponse> {
     }
   }
 
-  // 6. Risk Scoring & Recommendations
+  // 7. Risk Scoring & Recommendations
   // Scale 0.00 to 1.00
   let riskScore = 0.02;
 
   if (isHoneypot) {
     riskScore = 0.99;
+  } else if (inBondingCurve) {
+    // Launchpad bonding curve active (not a fatal honeypot)
+    riskScore = 0.25;
   } else {
     if (sellTaxBps > 1500) {
       // Sell tax > 15%
@@ -285,6 +392,8 @@ export async function scanToken(params: ScanRequest): Promise<ScanResponse> {
   let recommendation: ScanResponse["recommendation"] = "SAFE_TO_SWAP";
   if (isHoneypot) {
     recommendation = "DANGER_HONEYPOT";
+  } else if (inBondingCurve) {
+    recommendation = "BONDING_CURVE_ACTIVE";
   } else if (sellTaxBps > 1500) {
     recommendation = "CAUTION_HIGH_TAX";
   } else if (estimatedLiquidityUsd < 5000) {
@@ -305,6 +414,8 @@ export async function scanToken(params: ScanRequest): Promise<ScanResponse> {
     risk_score: riskScore,
     risk_factors: riskFactors,
     recommendation,
+    platform,
+    in_bonding_curve: inBondingCurve,
     attestation: `rugshield_verified_${CONFIG.chainId}_${tokenAddress.slice(0, 8)}_${now}`,
     timestamp: now,
   };
