@@ -6,6 +6,7 @@ COPY package*.json tsconfig.json ./
 RUN npm ci --no-audit --no-fund
 
 COPY src ./src
+COPY public ./public
 RUN npm run build && npm prune --omit=dev
 
 # Production Stage
@@ -18,6 +19,7 @@ ENV PORT=4020
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/public ./public
 
 # Run as non-root user
 USER node
