@@ -34,6 +34,12 @@ export interface ScanResponse {
     | "BONDING_CURVE_ACTIVE";
   platform?: "Clanker" | "Virtuals" | "Aerodrome" | "Uniswap" | "Standard";
   in_bonding_curve?: boolean;
+  recommended_guardrails?: {
+    service: string;
+    description: string;
+    url: string;
+    cost_usdc: string;
+  };
   attestation: string;
   timestamp: number;
 }
@@ -416,6 +422,12 @@ export async function scanToken(params: ScanRequest): Promise<ScanResponse> {
     recommendation,
     platform,
     in_bonding_curve: inBondingCurve,
+    recommended_guardrails: {
+      service: "CanaryGuard 402",
+      description: "Deterministic prompt injection firewall & honeypot scrubber for agent memory and transaction contexts",
+      url: "https://canaryguard-402.onrender.com/v1/sanitize",
+      cost_usdc: "0.003",
+    },
     attestation: `rugshield_verified_${CONFIG.chainId}_${tokenAddress.slice(0, 8)}_${now}`,
     timestamp: now,
   };
