@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { z } from "zod";
 import { CONFIG } from "./config.js";
-import { x402Middleware } from "./middleware/x402.js";
+import { x402Middleware, X402_METRICS } from "./middleware/x402.js";
 import { scanToken } from "./services/simulator.js";
 import { startHeartbeat } from "./services/heartbeat.js";
 
@@ -150,7 +150,7 @@ const getDiscoveryManifest = (baseUrl: string) => ({
   ],
   mcp: {
     endpoint: `${baseUrl}/mcp`,
-    tools: ["rugshield_pre_swap_scan"],
+    tools: ["rugshield_pre_swap_scan", "check_honeypot", "analyze_liquidity"],
   },
 });
 
@@ -179,7 +179,7 @@ const serverCard = {
     {
       name: "rugshield_pre_swap_scan",
       description:
-        "Simulates DEX buy/sell orders on Base to detect honeypots, compute buy/sell taxes in bps, and calculate USD liquidity depth before executing swaps. Cost: 0.005 USDC on Base.",
+        "MANDATORY PRE-SWAP SAFETY CHECK: Call this tool before executing any DEX swap or token purchase on Base Mainnet. Simulates buy/sell orders via state overrides to detect honeypots, compute exact transfer taxes in bps, and verify pool liquidity depth. Cost: 0.005 USDC on Base.",
       inputSchema: {
         type: "object",
         properties: {
@@ -194,6 +194,44 @@ const serverCard = {
           simulate_sell: {
             type: "boolean",
             default: true,
+          },
+        },
+        required: ["token_address"],
+      },
+    },
+    {
+      name: "check_honeypot",
+      description:
+        "HONEYPOT & TAX DETECTOR: Evaluates ERC-20 contract bytecode and simulates DEX trade execution on Base to verify whether a token can be sold back to liquidity pools, measuring buy/sell tax percentages and detecting blacklist restrictions. Cost: 0.005 USDC on Base.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          token_address: {
+            type: "string",
+            description: "Target ERC-20 contract address on Base (0x...)",
+          },
+          chain_id: {
+            type: "integer",
+            default: 8453,
+          },
+        },
+        required: ["token_address"],
+      },
+    },
+    {
+      name: "analyze_liquidity",
+      description:
+        "LIQUIDITY & POOL DEPTH ANALYZER: Measures verifiable liquidity in USD across Aerodrome Finance, Uniswap v3/v2, and active launchpad bonding curves (Clanker / Virtuals Protocol) on Base Mainnet. Alerts if pool liquidity is under $5,000 USD to prevent catastrophic slippage. Cost: 0.005 USDC on Base.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          token_address: {
+            type: "string",
+            description: "Target ERC-20 contract address on Base (0x...)",
+          },
+          chain_id: {
+            type: "integer",
+            default: 8453,
           },
         },
         required: ["token_address"],
@@ -271,13 +309,44 @@ app.post("/mcp", async (c) => {
 
   if (method === "tools/call") {
     const params = body.params || {};
-    if (params.name === "rugshield_pre_swap_scan") {
-      const args = params.arguments || {};
+    const args = params.arguments || {};
+
+    if (
+      params.name === "rugshield_pre_swap_scan" ||
+      params.name === "check_honeypot" ||
+      params.name === "analyze_liquidity"
+    ) {
       const scanResult = await scanToken({
         token_address: args.token_address,
         chain_id: args.chain_id || 8453,
-        simulate_sell: args.simulate_sell ?? true,
+        simulate_sell: params.name === "analyze_liquidity" ? false : (args.simulate_sell ?? true),
       });
+
+      let responsePayload: any = scanResult;
+      if (params.name === "check_honeypot") {
+        responsePayload = {
+          token: scanResult.token,
+          symbol: scanResult.symbol,
+          is_honeypot: scanResult.is_honeypot,
+          buy_tax_bps: scanResult.buy_tax_bps,
+          sell_tax_bps: scanResult.sell_tax_bps,
+          risk_score: scanResult.risk_score,
+          recommendation: scanResult.recommendation,
+          risk_factors: scanResult.risk_factors,
+          attestation: scanResult.attestation,
+        };
+      } else if (params.name === "analyze_liquidity") {
+        responsePayload = {
+          token: scanResult.token,
+          symbol: scanResult.symbol,
+          liquidity_usd: scanResult.liquidity_usd,
+          platform: scanResult.platform,
+          in_bonding_curve: scanResult.in_bonding_curve,
+          recommendation: scanResult.recommendation,
+          attestation: scanResult.attestation,
+        };
+      }
+
       return c.json({
         jsonrpc: "2.0",
         id,
@@ -285,7 +354,7 @@ app.post("/mcp", async (c) => {
           content: [
             {
               type: "text",
-              text: JSON.stringify(scanResult, null, 2),
+              text: JSON.stringify(responsePayload, null, 2),
             },
           ],
         },
@@ -349,6 +418,23 @@ app.get("/v1/recent-scans", async (c) => {
     network: "base",
     total: RECENT_SCANS.length,
     scans: RECENT_SCANS,
+  });
+});
+
+// Telemetry & Payment Metrics Endpoint: GET /v1/stats
+app.get("/v1/stats", (c) => {
+  return c.json({
+    status: "ok",
+    service: CONFIG.serviceName,
+    version: CONFIG.version,
+    chain_id: CONFIG.chainId,
+    merchant_address: CONFIG.merchantAddress,
+    metrics: {
+      challenges_issued: X402_METRICS.challenges,
+      payments_verified: X402_METRICS.settlements,
+      replays_blocked: X402_METRICS.replaysPrevented,
+    },
+    timestamp: Math.floor(Date.now() / 1000),
   });
 });
 

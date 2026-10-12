@@ -16,6 +16,13 @@ export interface X402VerificationResult {
   signatureHash: string;
 }
 
+// Metrics tracking for agent lifecycle and conversion observability
+export const X402_METRICS = {
+  challenges: 0,
+  settlements: 0,
+  replaysPrevented: 0,
+};
+
 export const x402Middleware = createMiddleware<{
   Variables: {
     payment?: X402VerificationResult;
@@ -26,11 +33,11 @@ export const x402Middleware = createMiddleware<{
   c.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   c.header(
     "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, X-PAYMENT, PAYMENT-SIGNATURE, X-402-Version"
+    "Content-Type, Authorization, X-PAYMENT, PAYMENT-SIGNATURE, X-402-Version, PAYMENT-REQUIRED, X-Payment-Required, X-402-Payment-Required"
   );
   c.header(
     "Access-Control-Expose-Headers",
-    "WWW-Authenticate, X-PAYMENT, PAYMENT-SIGNATURE, X-402-Version, Location, Retry-After"
+    "WWW-Authenticate, X-PAYMENT, PAYMENT-SIGNATURE, X-402-Version, PAYMENT-REQUIRED, X-Payment-Required, X-402-Payment-Required, Location, Retry-After"
   );
   c.header("X-402-Version", "1.0");
 
@@ -117,6 +124,7 @@ export const x402Middleware = createMiddleware<{
     // Replay protection via signature hash
     const sigHash = createHash("sha256").update(signature).digest("hex");
     if (replayCache.has(sigHash)) {
+      X402_METRICS.replaysPrevented++;
       return c.json(
         {
           error: "replay_detected",
@@ -197,6 +205,7 @@ export const x402Middleware = createMiddleware<{
 
     // Mark as consumed in replay cache
     replayCache.set(sigHash, true);
+    X402_METRICS.settlements++;
 
     c.set("payment", {
       payer: getAddress(from),
@@ -211,6 +220,7 @@ export const x402Middleware = createMiddleware<{
 });
 
 function return402Challenge(c: any, reason?: string) {
+  X402_METRICS.challenges++;
   c.header("WWW-Authenticate", 'x402 challenge="base-usdc-5000"');
   c.header("X-402-Version", "1.0");
 
@@ -236,10 +246,10 @@ function return402Challenge(c: any, reason?: string) {
     ],
   };
 
-  c.header(
-    "PAYMENT-REQUIRED",
-    Buffer.from(JSON.stringify(x402Pr)).toString("base64")
-  );
+  const invoiceBase64 = Buffer.from(JSON.stringify(x402Pr)).toString("base64");
+  c.header("PAYMENT-REQUIRED", invoiceBase64);
+  c.header("X-Payment-Required", invoiceBase64);
+  c.header("X-402-Payment-Required", invoiceBase64);
 
   return c.json(
     {
