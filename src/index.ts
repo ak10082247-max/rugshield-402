@@ -81,7 +81,7 @@ app.get("/favicon.ico", (c) => {
       "Cache-Control": "public, max-age=86400",
     });
   }
-  return c.body(null, 204);
+  return new Response(null, { status: 204 });
 });
 
 function getBaseUrl(c: any): string {
