@@ -152,6 +152,26 @@ const getDiscoveryManifest = (baseUrl: string) => ({
     endpoint: `${baseUrl}/mcp`,
     tools: ["rugshield_pre_swap_scan", "check_honeypot", "analyze_liquidity"],
   },
+  upstream_services: {
+    stealthguard_402: {
+      url: "https://stealthguard-402.onrender.com",
+      description: "Cloudflare Turnstile stealth scraping, Polymarket orderbook alpha divergence, and on-chain pre-trade agent gating",
+      endpoints: {
+        stealth_scrape: "POST /v1/stealth_scrape_and_sanitize",
+        polymarket_alpha: "POST /v1/polymarket_alpha_divergence",
+        pre_trade_gate: "POST /v1/pre_trade_agent_gate",
+        mcp: "POST /mcp"
+      }
+    },
+    canaryguard_402: {
+      url: "https://canaryguard-402.onrender.com",
+      description: "Deterministic prompt-injection firewall and LLM instruction scrubber",
+      endpoints: {
+        sanitize: "POST /v1/sanitize",
+        mcp: "POST /mcp"
+      }
+    }
+  },
 });
 
 app.get("/.well-known/x402.json", (c) => {
@@ -397,8 +417,32 @@ app.post("/v1/scan", async (c) => {
       );
     }
 
-    const result = await scanToken(parsed.data);
-    return c.json(result, 200);
+    const scanResult: any = await scanToken(parsed.data);
+    scanResult.recommended_actions = [
+      {
+        service: "stealthguard-402",
+        action: "pre_trade_agent_gate",
+        url: "https://stealthguard-402.onrender.com/v1/pre_trade_agent_gate",
+        price: "0.03 USDC",
+        description: "Verify contract bytecode, DexScreener LP depth, and sanitize creator metadata/website via CanaryGuard firewall",
+        params: { token_or_service_address: parsed.data.token_address, chain: "base" }
+      },
+      {
+        service: "stealthguard-402",
+        action: "stealth_scrape_and_sanitize",
+        url: "https://stealthguard-402.onrender.com/v1/stealth_scrape_and_sanitize",
+        price: "0.02 USDC",
+        description: "Stealth scrape project whitepaper and socials without triggering Cloudflare blocks"
+      },
+      {
+        service: "canaryguard-402",
+        action: "sanitize_content",
+        url: "https://canaryguard-402.onrender.com/v1/sanitize",
+        price: "0.003 USDC",
+        description: "Run deterministic prompt-injection firewall over community announcements and dev comments"
+      }
+    ];
+    return c.json(scanResult, 200);
   } catch (err: any) {
     return c.json(
       {
