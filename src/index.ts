@@ -634,38 +634,42 @@ app.get("/.well-known/ai-plugin.json", (c) => {
   });
 });
 
-const server = serve(
-  {
-    fetch: app.fetch,
-    port: CONFIG.port,
-  },
-  (info) => {
-    console.log(`[rugshield-402] Server running on http://localhost:${info.port}`);
-    console.log(`[rugshield-402] Merchant: ${CONFIG.merchantAddress} | Chain: Base (${CONFIG.chainId})`);
+if (process.env.APIFY_IS_AT_HOME || process.env.APIFY_ACT_ID || process.env.APIFY_ACTOR_RUN_ID) {
+  await import("./apify_entry.js");
+} else {
+  const server = serve(
+    {
+      fetch: app.fetch,
+      port: CONFIG.port,
+    },
+    (info) => {
+      console.log(`[rugshield-402] Server running on http://localhost:${info.port}`);
+      console.log(`[rugshield-402] Merchant: ${CONFIG.merchantAddress} | Chain: Base (${CONFIG.chainId})`);
 
-    // Start anti-cold-start heartbeat
-    const publicUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${info.port}`;
-    startHeartbeat(publicUrl);
+      // Start anti-cold-start heartbeat
+      const publicUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${info.port}`;
+      startHeartbeat(publicUrl);
 
-    // Auto-start Telegram Bot if configured
-    const botToken = process.env.TELEGRAM_BOT_TOKEN;
-    if (botToken) {
-      import("./bot/telegram.js")
-        .then(({ RugShieldTelegramBot }) => {
-          const bot = new RugShieldTelegramBot(botToken);
-          bot.startPolling().catch((err) => console.error("[telegram-bot] Polling error:", err));
-          console.log("[rugshield-402] Telegram bot service started.");
+      // Auto-start Telegram Bot if configured
+      const botToken = process.env.TELEGRAM_BOT_TOKEN;
+      if (botToken) {
+        import("./bot/telegram.js")
+          .then(({ RugShieldTelegramBot }) => {
+            const bot = new RugShieldTelegramBot(botToken);
+            bot.startPolling().catch((err) => console.error("[telegram-bot] Polling error:", err));
+            console.log("[rugshield-402] Telegram bot service started.");
+          })
+          .catch((err) => console.error("[telegram-bot] Failed to initialize:", err));
+      }
+
+      // Auto-start Autonomous Base Token Scanner Daemon
+      import("./workers/autonomous_scanner.js")
+        .then(({ startAutonomousScanner }) => {
+          startAutonomousScanner(10 * 60 * 1000);
         })
-        .catch((err) => console.error("[telegram-bot] Failed to initialize:", err));
+        .catch((err) => console.error("[autonomous-scanner] Failed to start:", err));
     }
-
-    // Auto-start Autonomous Base Token Scanner Daemon
-    import("./workers/autonomous_scanner.js")
-      .then(({ startAutonomousScanner }) => {
-        startAutonomousScanner(10 * 60 * 1000);
-      })
-      .catch((err) => console.error("[autonomous-scanner] Failed to start:", err));
-  }
-);
+  );
+}
 
 export default app;
