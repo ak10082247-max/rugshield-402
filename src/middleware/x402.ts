@@ -1,6 +1,6 @@
 import { createMiddleware } from "hono/factory";
 import { LRUCache } from "lru-cache";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { verifyTypedData, getAddress, isAddress } from "viem";
 import { CONFIG } from "../config.js";
 
@@ -37,9 +37,9 @@ export const x402Middleware = createMiddleware<{
   );
   c.header(
     "Access-Control-Expose-Headers",
-    "WWW-Authenticate, X-PAYMENT, PAYMENT-SIGNATURE, X-402-Version, PAYMENT-REQUIRED, X-Payment-Required, X-402-Payment-Required, Location, Retry-After"
+    "WWW-Authenticate, X-PAYMENT, PAYMENT-SIGNATURE, X-402-Version, PAYMENT-REQUIRED, X-Payment-Required, X-402-Payment-Required, PAYMENT-RESPONSE, Payment-Receipt, Location, Retry-After"
   );
-  c.header("X-402-Version", "1.0");
+  c.header("X-402-Version", "2");
 
   if (c.req.method === "OPTIONS") {
     return c.body(null, 204);
@@ -221,12 +221,39 @@ export const x402Middleware = createMiddleware<{
 
 function return402Challenge(c: any, reason?: string) {
   X402_METRICS.challenges++;
-  c.header("WWW-Authenticate", 'x402 challenge="base-usdc-5000"');
-  c.header("X-402-Version", "1.0");
+  const host = c.req.header("host") || `localhost:${CONFIG.port}`;
+  const proto = c.req.header("x-forwarded-proto") || (host.includes("onrender.com") ? "https" : "http");
+  const baseUrl = host.includes("onrender.com") ? "https://rugshield-402.onrender.com" : `${proto}://${host}`;
+  const resUrl = `${baseUrl}/v1/scan`;
+  const desc = "Low-latency token honeypot detection, tax simulation, and pool liquidity verification for AI agents.";
+
+  const challengeId = randomUUID();
+  const reqPayload = {
+    amount: CONFIG.amountMicroUnits,
+    chainId: CONFIG.chainId,
+    currency: CONFIG.usdcAddress,
+    decimals: 6,
+    recipient: CONFIG.merchantAddress,
+  };
+  const reqB64 = Buffer.from(JSON.stringify(reqPayload)).toString("base64url");
+  const expires = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+
+  c.header(
+    "WWW-Authenticate",
+    `Payment id="${challengeId}", realm="rugshield-402.onrender.com", method="evm", intent="charge", request="${reqB64}", expires="${expires}"`
+  );
+  c.header("X-402-Version", "2");
+
+  const resourceObj = {
+    url: resUrl,
+    description: desc,
+    mimeType: "application/json",
+  };
 
   // Construct standard Base x402 PAYMENT-REQUIRED header for standard x402 clients
   const x402Pr = {
     x402Version: 2,
+    resource: resourceObj,
     accepts: [
       {
         scheme: "exact",
@@ -238,9 +265,11 @@ function return402Challenge(c: any, reason?: string) {
         payTo: CONFIG.merchantAddress,
         instructions: "Pay using EIP-712/EIP-3009 transfer authorization",
         extra: { name: "USD Coin", version: "2" },
+        description: desc,
+        mimeType: "application/json",
         bazaar: {
           name: "RugShield 402",
-          description: "Low-latency token honeypot detection, tax simulation, and pool liquidity verification for AI agents.",
+          description: desc,
         },
       },
     ],
@@ -253,7 +282,11 @@ function return402Challenge(c: any, reason?: string) {
 
   return c.json(
     {
-      x402_version: "1.0",
+      error: "payment_required",
+      x402Version: 2,
+      x402_version: "2",
+      resource: resourceObj,
+      accepts: x402Pr.accepts,
       payTo: CONFIG.merchantAddress,
       amount: CONFIG.amountMicroUnits,
       asset: CONFIG.usdcAddress,

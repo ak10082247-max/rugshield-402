@@ -72,6 +72,111 @@ app.get("/app", (c) => {
   return c.redirect("/");
 });
 
+// Favicon Endpoint
+app.get("/favicon.ico", (c) => {
+  const iconPath = join(process.cwd(), "public", "favicon.ico");
+  if (existsSync(iconPath)) {
+    return c.body(readFileSync(iconPath), 200, {
+      "Content-Type": "image/x-icon",
+      "Cache-Control": "public, max-age=86400",
+    });
+  }
+  return c.text("", 204);
+});
+
+// OpenAPI Spec Endpoint
+app.get(["/openapi.json", "/.well-known/openapi.json"], (c) => {
+  const host = c.req.header("host") || `localhost:${CONFIG.port}`;
+  const proto = c.req.header("x-forwarded-proto") || (host.includes("onrender.com") ? "https" : "http");
+  const baseUrl = host.includes("onrender.com") ? "https://rugshield-402.onrender.com" : `${proto}://${host}`;
+  return c.json({
+    openapi: "3.0.3",
+    info: {
+      title: "RugShield 402",
+      version: CONFIG.version,
+      description: "Low-latency DEX honeypot detection, buy/sell tax simulation, and pool liquidity verification on Base for AI agents, gated by x402.",
+      contact: {
+        name: "AK Kurox",
+        email: "ak10082247@gmail.com",
+        url: "https://github.com/ak10082247-max/rugshield-402",
+      },
+    },
+    servers: [{ url: baseUrl }],
+    paths: {
+      "/v1/scan": {
+        post: {
+          summary: "Simulate DEX swap and verify honeypot / tax safety",
+          description: "Simulates buy/sell orders via state overrides to detect honeypots, compute exact transfer taxes in bps, and verify pool liquidity depth. Requires 0.005 USDC on Base.",
+          operationId: "scanToken",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    token_address: { type: "string", example: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" },
+                    chain_id: { type: "integer", example: 8453 },
+                    simulate_sell: { type: "boolean", example: true },
+                  },
+                  required: ["token_address"],
+                },
+              },
+            },
+          },
+          responses: {
+            "200": {
+              description: "Token scan executed successfully",
+            },
+            "402": {
+              description: "Payment Required: 0.005 USDC on Base mainnet (EIP-155:8453)",
+            },
+          },
+          "x-payment-info": {
+            network: "eip155:8453",
+            chainId: 8453,
+            asset: CONFIG.usdcAddress,
+            currency: "USDC",
+            amount: CONFIG.amountMicroUnits,
+            price: CONFIG.unitPriceUsd,
+            payTo: CONFIG.merchantAddress,
+            scheme: "exact",
+            facilitator: CONFIG.facilitator,
+          },
+        },
+        get: {
+          summary: "Simulate DEX swap (GET probe)",
+          description: "Accepts query parameters ?token_address=0x... for GET probes.",
+          parameters: [
+            {
+              name: "token_address",
+              in: "query",
+              required: true,
+              schema: { type: "string", example: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" },
+            },
+          ],
+          responses: {
+            "200": { description: "Scan success" },
+            "402": { description: "Payment Required: 0.005 USDC on Base" },
+          },
+          "x-payment-info": {
+            network: "eip155:8453",
+            chainId: 8453,
+            asset: CONFIG.usdcAddress,
+            currency: "USDC",
+            amount: CONFIG.amountMicroUnits,
+            price: CONFIG.unitPriceUsd,
+            payTo: CONFIG.merchantAddress,
+            scheme: "exact",
+            facilitator: CONFIG.facilitator,
+          },
+        },
+      },
+    },
+  });
+});
+
+
 // Machine Discovery Manifest (RFC/x402 standard)
 const getDiscoveryManifest = (baseUrl: string) => ({
   x402_version: "1.0",
@@ -451,6 +556,19 @@ app.post("/v1/scan", async (c) => {
       },
       500
     );
+  }
+});
+
+// Dual GET support for /v1/scan probes
+app.get("/v1/scan", async (c) => {
+  try {
+    const token_address = c.req.query("token_address") || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+    const chain_id = Number(c.req.query("chain_id")) || 8453;
+    const simulate_sell = c.req.query("simulate_sell") !== "false";
+    const scanResult: any = await scanToken({ token_address, chain_id, simulate_sell });
+    return c.json(scanResult, 200);
+  } catch (err: any) {
+    return c.json({ error: "scan_failed", message: err.message }, 500);
   }
 });
 
