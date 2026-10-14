@@ -1,0 +1,19 @@
+{
+  "actorSpecification": 1,
+  "name": "rugshield-402",
+  "title": "RugShield-402: Base DEX Token Honeypot & Tax Simulation Gate",
+  "description": "Low-latency token honeypot detection, buy/sell tax simulation, and pool liquidity verification for autonomous trading agents on Base Mainnet. Monetized via Base x402 and Apify PPE.",
+  "version": "1.0",
+  "dockerfile": "../Dockerfile",
+  "readme": "../README.md",
+  "payPerEvent": {
+    "events": {
+      "token_scan": {
+        "eventTitle": "Token Honeypot & Tax Simulation Scan",
+        "eventDescription": "Full buy/sell tax simulation, honeypot detection, and liquidity verification on Base Mainnet",
+        "eventPriceUsd": 0.005
+      }
+    }
+  },
+  "input": "./input_schema.json"
+}

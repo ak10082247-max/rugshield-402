@@ -1,0 +1,29 @@
+{
+  "title": "RugShield-402 Token Honeypot & Tax Scanner Input",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "token_address": {
+      "title": "Token Contract Address",
+      "type": "string",
+      "description": "The Base EVM token contract address (0x...) to simulate taxes and honeypot risk on",
+      "editor": "textfield",
+      "default": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+    },
+    "chain": {
+      "title": "Blockchain Network",
+      "type": "string",
+      "description": "Target EVM network for simulation (default: base)",
+      "editor": "textfield",
+      "default": "base"
+    },
+    "simulate_sell": {
+      "title": "Simulate Sell Transaction",
+      "type": "boolean",
+      "description": "Whether to simulate selling tokens to verify sell tax and prevent honeypots",
+      "editor": "checkbox",
+      "default": true
+    }
+  },
+  "required": ["token_address"]
+}
