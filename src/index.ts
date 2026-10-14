@@ -81,14 +81,18 @@ app.get("/favicon.ico", (c) => {
       "Cache-Control": "public, max-age=86400",
     });
   }
-  return c.text("", 204);
+  return c.body(null, 204);
 });
 
-// OpenAPI Spec Endpoint
-app.get(["/openapi.json", "/.well-known/openapi.json"], (c) => {
+function getBaseUrl(c: any): string {
   const host = c.req.header("host") || `localhost:${CONFIG.port}`;
   const proto = c.req.header("x-forwarded-proto") || (host.includes("onrender.com") ? "https" : "http");
-  const baseUrl = host.includes("onrender.com") ? "https://rugshield-402.onrender.com" : `${proto}://${host}`;
+  return host.includes("onrender.com") ? "https://rugshield-402.onrender.com" : `${proto}://${host}`;
+}
+
+// OpenAPI Spec Endpoint
+app.get("/openapi.json", (c) => {
+  const baseUrl = getBaseUrl(c);
   return c.json({
     openapi: "3.0.3",
     info: {
@@ -528,7 +532,7 @@ app.post("/v1/scan", async (c) => {
         service: "stealthguard-402",
         action: "pre_trade_agent_gate",
         url: "https://stealthguard-402.onrender.com/v1/pre_trade_agent_gate",
-        price: "0.03 USDC",
+        price: "0.005 USDC",
         description: "Verify contract bytecode, DexScreener LP depth, and sanitize creator metadata/website via CanaryGuard firewall",
         params: { token_or_service_address: parsed.data.token_address, chain: "base" }
       },
@@ -536,7 +540,7 @@ app.post("/v1/scan", async (c) => {
         service: "stealthguard-402",
         action: "stealth_scrape_and_sanitize",
         url: "https://stealthguard-402.onrender.com/v1/stealth_scrape_and_sanitize",
-        price: "0.02 USDC",
+        price: "0.005 USDC",
         description: "Stealth scrape project whitepaper and socials without triggering Cloudflare blocks"
       },
       {
@@ -597,6 +601,36 @@ app.get("/v1/stats", (c) => {
       replays_blocked: X402_METRICS.replaysPrevented,
     },
     timestamp: Math.floor(Date.now() / 1000),
+  });
+});
+
+app.get("/robots.txt", (c) => {
+  const baseUrl = getBaseUrl(c);
+  return c.text(`User-agent: *\nAllow: /\n\nUser-agent: GPTBot\nAllow: /\n\nUser-agent: ClaudeBot\nAllow: /\n\nUser-agent: PerplexityBot\nAllow: /\n\nSitemap: ${baseUrl}/sitemap.xml\n`);
+});
+
+app.get("/sitemap.xml", (c) => {
+  const baseUrl = getBaseUrl(c);
+  return c.body(
+    `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url><loc>${baseUrl}/</loc><changefreq>hourly</changefreq></url>\n  <url><loc>${baseUrl}/llms.txt</loc><changefreq>hourly</changefreq></url>\n  <url><loc>${baseUrl}/.well-known/x402.json</loc><changefreq>hourly</changefreq></url>\n  <url><loc>${baseUrl}/v1/scan</loc><changefreq>hourly</changefreq></url>\n</urlset>`,
+    200,
+    { "Content-Type": "application/xml" }
+  );
+});
+
+app.get("/.well-known/ai-plugin.json", (c) => {
+  const baseUrl = getBaseUrl(c);
+  return c.json({
+    schema_version: "v1",
+    name_for_model: "rugshield_402",
+    name_for_human: "RugShield 402",
+    description_for_model: "Low-latency DEX honeypot detection, buy/sell tax simulation, and pool liquidity verification on Base Mainnet via x402 USDC micropayments.",
+    description_for_human: "Base DEX token safety and honeypot simulator.",
+    auth: { type: "none" },
+    api: { type: "openapi", url: `${baseUrl}/openapi.json` },
+    logo_url: `${baseUrl}/favicon.ico`,
+    contact_email: "ak10082247@gmail.com",
+    legal_info_url: `${baseUrl}/llms.txt`,
   });
 });
 
