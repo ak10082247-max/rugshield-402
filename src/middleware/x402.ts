@@ -250,10 +250,62 @@ function return402Challenge(c: any, reason?: string) {
     mimeType: "application/json",
   };
 
+  const bazaarExtension = {
+    info: {
+      input: {
+        type: "http",
+        method: "POST",
+        bodyType: "json",
+        body: {
+          token_address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          chain: "base",
+        },
+      },
+      output: {
+        type: "json",
+        example: {
+          status: "success",
+          token_address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          symbol: "USDC",
+          is_honeypot: false,
+          buy_tax_bps: 0,
+          sell_tax_bps: 0,
+          simulation_status: "passed",
+        },
+      },
+    },
+    schema: {
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      type: "object",
+      properties: {
+        input: {
+          type: "object",
+          properties: {
+            type: { type: "string", const: "http" },
+            method: { type: "string", enum: ["POST", "GET"] },
+            bodyType: { type: "string", enum: ["json"] },
+            body: {
+              type: "object",
+              properties: {
+                token_address: { type: "string" },
+                chain: { type: "string" },
+              },
+              required: ["token_address"],
+            },
+          },
+          required: ["type", "method", "bodyType", "body"],
+          additionalProperties: false,
+        },
+      },
+      required: ["input"],
+    },
+  };
+
   // Construct standard Base x402 PAYMENT-REQUIRED header for standard x402 clients
   const x402Pr = {
     x402Version: 2,
     resource: resourceObj,
+    extensions: { bazaar: bazaarExtension },
     accepts: [
       {
         scheme: "exact",
@@ -267,10 +319,6 @@ function return402Challenge(c: any, reason?: string) {
         extra: { name: "USD Coin", version: "2" },
         description: desc,
         mimeType: "application/json",
-        bazaar: {
-          name: "RugShield 402",
-          description: desc,
-        },
       },
     ],
   };
@@ -286,6 +334,7 @@ function return402Challenge(c: any, reason?: string) {
       x402Version: 2,
       x402_version: "2",
       resource: resourceObj,
+      extensions: { bazaar: bazaarExtension },
       accepts: x402Pr.accepts,
       payTo: CONFIG.merchantAddress,
       amount: CONFIG.amountMicroUnits,
