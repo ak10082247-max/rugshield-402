@@ -1,12 +1,10 @@
 {
   "actorSpecification": 1,
-  "payPerEvent": {
-    "events": {
-      "token_scan": {
-        "eventTitle": "Token Honeypot & Tax Simulation Scan",
-        "eventDescription": "Full buy/sell tax simulation, honeypot detection, and liquidity verification on Base Mainnet",
-        "eventPriceUsd": 0.005
-      }
+  "events": {
+    "token_scan": {
+      "eventTitle": "Token Honeypot & Tax Simulation Scan",
+      "eventDescription": "Full buy/sell tax simulation, honeypot detection, and liquidity verification on Base Mainnet",
+      "eventPriceUsd": 0.005
     }
   }
 }

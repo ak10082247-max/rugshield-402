@@ -1,0 +1,121 @@
+{
+  "actorSpecification": 1,
+  "fields": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "token": {
+        "type": "string",
+        "title": "Token Contract Address",
+        "description": "Base Mainnet contract address of scanned token",
+        "example": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+      },
+      "symbol": {
+        "type": "string",
+        "title": "Token Symbol",
+        "description": "ERC-20 token symbol",
+        "example": "USDC"
+      },
+      "is_honeypot": {
+        "type": "boolean",
+        "title": "Honeypot Flag",
+        "description": "True if token has non-sellable honeypot logic or transfer restrictions",
+        "example": false
+      },
+      "buy_tax_bps": {
+        "type": "integer",
+        "title": "Buy Tax (bps)",
+        "description": "Buy tax in basis points (100 bps = 1%)",
+        "example": 0
+      },
+      "sell_tax_bps": {
+        "type": "integer",
+        "title": "Sell Tax (bps)",
+        "description": "Sell tax in basis points (100 bps = 1%)",
+        "example": 0
+      },
+      "liquidity_usd": {
+        "type": "number",
+        "title": "DEX Liquidity (USD)",
+        "description": "Verified pool liquidity across Aerodrome and Uniswap V2/V3",
+        "example": 150000000.0
+      },
+      "risk_score": {
+        "type": "number",
+        "title": "Risk Score",
+        "description": "Composite safety score (0 = lowest risk, 100 = critical honeypot/rug risk)",
+        "example": 5.0
+      },
+      "recommendation": {
+        "type": "string",
+        "title": "Trade Recommendation",
+        "description": "SAFE_TO_SWAP, CAUTION_HIGH_TAX, HIGH_RISK_LOW_LIQUIDITY, or DANGER_HONEYPOT",
+        "example": "SAFE_TO_SWAP"
+      },
+      "platform": {
+        "type": "string",
+        "title": "DEX / Launchpad",
+        "description": "Identified DEX launchpad: Clanker, Virtuals, Aerodrome, or Uniswap",
+        "example": "Uniswap"
+      },
+      "attestation": {
+        "type": "string",
+        "title": "Audit Attestation",
+        "description": "Cryptographic scan attestation identifier"
+      },
+      "recommended_actions": {
+        "type": "array",
+        "title": "Recommended Actions",
+        "description": "Next-hop actions (CanaryGuard prompt injection scrub, StealthGuard scrape)",
+        "items": {
+          "type": "object"
+        }
+      }
+    },
+    "additionalProperties": true
+  },
+  "views": {
+    "overview": {
+      "title": "Overview",
+      "description": "Clean summary of token safety verdicts, taxes, liquidity, and recommendations",
+      "transformation": {
+        "fields": [
+          "token",
+          "symbol",
+          "is_honeypot",
+          "buy_tax_bps",
+          "sell_tax_bps",
+          "liquidity_usd",
+          "recommendation"
+        ]
+      },
+      "display": {
+        "component": "table",
+        "properties": {
+          "token": {
+            "label": "Token Address",
+            "format": "link"
+          },
+          "symbol": {
+            "label": "Symbol"
+          },
+          "is_honeypot": {
+            "label": "Honeypot?"
+          },
+          "buy_tax_bps": {
+            "label": "Buy Tax (bps)"
+          },
+          "sell_tax_bps": {
+            "label": "Sell Tax (bps)"
+          },
+          "liquidity_usd": {
+            "label": "Liquidity ($)"
+          },
+          "recommendation": {
+            "label": "Verdict"
+          }
+        }
+      }
+    }
+  }
+}

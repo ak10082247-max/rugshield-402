@@ -15,5 +15,9 @@
       }
     }
   },
-  "input": "./input_schema.json"
+  "input": "./input_schema.json",
+  "output": "./output_schema.json",
+  "storages": {
+    "dataset": "./dataset_schema.json"
+  }
 }

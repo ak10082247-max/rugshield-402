@@ -1,0 +1,14 @@
+{
+  "actorOutputSchemaVersion": 1,
+  "title": "RugShield-402 Output",
+  "description": "Output schema for RugShield-402 Base DEX token honeypot detection and tax simulation datasets",
+  "type": "object",
+  "properties": {
+    "resultsDatasetUrl": {
+      "type": "string",
+      "title": "Results Dataset",
+      "description": "Default dataset containing token honeypot verdicts, buy/sell tax bps, DEX liquidity depths, and risk assessments",
+      "template": "{{links.apiDefaultDatasetUrl}}/items?format=json"
+    }
+  }
+}
