@@ -1,6 +1,7 @@
 # RugShield 402 🛡️
 
 [![Base Mainnet](https://img.shields.io/badge/Base-Mainnet_8453-0052FF.svg?logo=coinbase&logoColor=white)](https://basescan.org)
+[![MCPize](https://img.shields.io/badge/MCPize-Subscribe%20%2419%2Fmo-8A2BE2?logo=stripe&logoColor=white)](https://mcpize.com)
 [![x402 Protocol](https://img.shields.io/badge/Protocol-x402_Micro--Payment-10b981.svg)](https://rugshield-402.onrender.com/.well-known/x402.json)
 [![ElizaOS Plugin](https://img.shields.io/npm/v/@kurox_real/plugin-rugshield-402.svg?label=elizaos-plugin&color=blueviolet)](https://www.npmjs.com/package/@kurox_real/plugin-rugshield-402)
 [![AgentKit Action](https://img.shields.io/npm/v/@kurox_real/agentkit-rugshield-402.svg?label=agentkit-provider&color=blue)](https://www.npmjs.com/package/@kurox_real/agentkit-rugshield-402)
@@ -10,7 +11,22 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 > **Autonomous DEX Honeypot Detection & Pre-Swap Simulation Engine for AI Agents on Base.**  
-> Gated natively by the **HTTP 402 Payment Required** micro-payment standard ($0.005 USDC per scan on Base Mainnet).
+> Gated natively by the **HTTP 402 Payment Required** micro-payment standard ($0.005 USDC per scan on Base Mainnet) and recurring monthly fiat subscriptions on MCPize.
+
+---
+
+## 💳 Subscribe on MCPize / Apify ($19/mo Pro)
+
+For crypto trading firms, quantitative bots, and AI agents that prefer fiat credit card billing via Stripe Connect over per-scan crypto micro-transactions:
+
+| Plan | Price | Monthly Quota | Key Features |
+|---|---|---|---|
+| **Starter** | **$9.99 / mo** | 2,000 scans | Base bytecode simulation, buy/sell tax rate check, liquidity lock |
+| **Pro (Recommended)** | **$19.99 / mo** | 20,000 scans | Real-time DEX pre-swap simulation, blacklist check, sub-100ms RPC cache |
+| **Enterprise** | **$49.99 / mo** | 75,000 scans | Mempool frontrun alerts, dedicated private node, direct developer support |
+
+- **Instant 1-Click Subscribe**: Paste `https://github.com/ak10082247-max/rugshield-402` into your **[MCPize Dashboard](https://mcpize.com/dashboard)**.
+- **Direct Remote MCP Endpoint**: `https://rugshield-402.onrender.com/mcp`
 
 ---
 

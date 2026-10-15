@@ -1,0 +1,87 @@
+{
+  "$schema": "https://mcpize.com/schemas/v1/mcpize.schema.json",
+  "id": "rugshield-402",
+  "name": "RugShield-402",
+  "title": "RugShield 402 - Real-Time Token Honeypot & Rug-Pull Auditor",
+  "description": "On-chain token contract bytecode analyzer and pre-swap simulator for Base & Ethereum DEX pairs, preventing sandwich attacks, honeypots, and rug pulls.",
+  "version": "1.0.0",
+  "author": {
+    "name": "AK Kurox",
+    "email": "ak10082247@gmail.com",
+    "url": "https://github.com/ak10082247-max"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ak10082247-max/rugshield-402"
+  },
+  "homepage": "https://rugshield-402.onrender.com",
+  "category": "crypto",
+  "tags": [
+    "honeypot-detector",
+    "rugpull-scanner",
+    "dex",
+    "token-security",
+    "base",
+    "smart-contracts"
+  ],
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://rugshield-402.onrender.com/mcp"
+    }
+  ],
+  "monetization": {
+    "enabled": true,
+    "provider": "stripe",
+    "currency": "usd",
+    "pricing": {
+      "type": "subscription",
+      "tiers": [
+        {
+          "id": "starter",
+          "name": "Starter",
+          "price_usd_per_month": 9.99,
+          "quota_requests_per_month": 2000,
+          "features": [
+            "2,000 token contract security audits / month",
+            "Base Mainnet EVM bytecode simulation",
+            "Buy / sell tax rate detection & transfer fee bounds",
+            "Liquidity pool lock verification (Aerodrome/Uniswap)",
+            "Standard community support"
+          ]
+        },
+        {
+          "id": "pro",
+          "name": "Pro (Recommended)",
+          "price_usd_per_month": 19.99,
+          "quota_requests_per_month": 20000,
+          "is_featured": true,
+          "features": [
+            "20,000 real-time token contract audits / month",
+            "Real-time DEX pair pre-swap execution simulation",
+            "Blacklist function & hidden mint authority detection",
+            "Telegram bot API & ElizaOS trading agent integration",
+            "Sub-100ms RPC caching & 99.9% uptime SLA"
+          ]
+        },
+        {
+          "id": "enterprise",
+          "name": "Enterprise",
+          "price_usd_per_month": 49.99,
+          "quota_requests_per_month": 75000,
+          "features": [
+            "75,000 monthly audit requests + high-frequency polling",
+            "Mempool pending transaction frontrun analysis",
+            "Custom alert webhooks for new pool creations",
+            "Dedicated private RPC node infrastructure",
+            "Direct developer support"
+          ]
+        }
+      ],
+      "pay_per_call": {
+        "enabled": true,
+        "price_usd": 0.005
+      }
+    }
+  }
+}
