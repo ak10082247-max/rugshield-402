@@ -8,3 +8,6 @@ coverage/
 *.log
 *.key
 .DS_Store
+
+mcp-publisher.exe
+
