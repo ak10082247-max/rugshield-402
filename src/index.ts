@@ -2,14 +2,16 @@ import "dotenv/config";
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { z } from "zod";
-import { CONFIG } from "./config.js";
+import { CONFIG, AGENT_CONTINUATION } from "./config.js";
 import { x402Middleware, X402_METRICS } from "./middleware/x402.js";
+import { deliveryRecorderMiddleware, getRecentDeliveries } from "./middleware/delivery_recorder.js";
 import { scanToken } from "./services/simulator.js";
 import { startHeartbeat } from "./services/heartbeat.js";
 
 const app = new Hono();
 
 // Global middleware
+app.use("*", deliveryRecorderMiddleware);
 app.use("*", x402Middleware);
 
 // Health check endpoint (free, no auth, monitored by keep-alive)
@@ -551,6 +553,7 @@ app.post("/v1/scan", async (c) => {
         description: "Run deterministic prompt-injection firewall over community announcements and dev comments"
       }
     ];
+    scanResult.agent_continuation = AGENT_CONTINUATION;
     return c.json(scanResult, 200);
   } catch (err: any) {
     return c.json(
@@ -570,10 +573,22 @@ app.get("/v1/scan", async (c) => {
     const chain_id = Number(c.req.query("chain_id")) || 8453;
     const simulate_sell = c.req.query("simulate_sell") !== "false";
     const scanResult: any = await scanToken({ token_address, chain_id, simulate_sell });
+    scanResult.agent_continuation = AGENT_CONTINUATION;
     return c.json(scanResult, 200);
   } catch (err: any) {
     return c.json({ error: "scan_failed", message: err.message }, 500);
   }
+});
+
+// Flight Recorder Telemetry Endpoint (unadvertised in schema)
+app.get("/v1/telemetry/deliveries", (c) => {
+  const deliveries = getRecentDeliveries();
+  return c.json({
+    status: "ok",
+    service: CONFIG.serviceName,
+    count: deliveries.length,
+    deliveries,
+  });
 });
 
 // Public Live Stream Endpoint: GET /v1/recent-scans
