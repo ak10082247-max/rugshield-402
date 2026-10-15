@@ -4,7 +4,7 @@ import { serve } from "@hono/node-server";
 import { z } from "zod";
 import { CONFIG, AGENT_CONTINUATION } from "./config.js";
 import { x402Middleware, X402_METRICS } from "./middleware/x402.js";
-import { deliveryRecorderMiddleware, getRecentDeliveries } from "./middleware/delivery_recorder.js";
+import { deliveryRecorderMiddleware, getRecentDeliveries, getPaidDeliveries } from "./middleware/delivery_recorder.js";
 import { scanToken } from "./services/simulator.js";
 import { startHeartbeat } from "./services/heartbeat.js";
 
@@ -583,9 +583,12 @@ app.get("/v1/scan", async (c) => {
 // Flight Recorder Telemetry Endpoint (unadvertised in schema)
 app.get("/v1/telemetry/deliveries", (c) => {
   const deliveries = getRecentDeliveries();
+  const paid = getPaidDeliveries();
   return c.json({
     status: "ok",
     service: CONFIG.serviceName,
+    paid_count: paid.length,
+    paid_deliveries: paid,
     count: deliveries.length,
     deliveries,
   });
