@@ -398,6 +398,12 @@ function return402Challenge(c: any, spec: EndpointPriceSpec, reason?: string) {
   c.header("PAYMENT-REQUIRED", invoiceBase64);
   c.header("X-Payment-Required", invoiceBase64);
   c.header("X-402-Payment-Required", invoiceBase64);
+  c.header("X-402-Amount", spec.priceUsd);
+  c.header("X-402-Amount-Units", spec.amountMicroUnits);
+  c.header("X-402-Payment-To", CONFIG.merchantAddress);
+  c.header("X-402-Asset", CONFIG.usdcAddress);
+  c.header("X-402-Network", "base");
+  c.header("X-402-Chain-Id", CONFIG.chainId.toString());
 
   return c.json(
     {
