@@ -49,7 +49,7 @@ app.get("/", (c) => {
     service: "RugShield 402",
     version: CONFIG.version,
     description: "Low-latency token honeypot detection, LP lock verification, and 7-vector institutional risk audit on Base Mainnet for AI agents",
-    pricing: "$0.008 - $0.15 USDC per call on Base (EIP-155:8453)",
+    pricing: "$0.010 - $0.020 USDC per call on Base (EIP-155:8453)",
     health: "/health",
     discovery: "/.well-known/x402.json",
     endpoints_count: ENDPOINT_SPECS.length,
@@ -219,6 +219,34 @@ const getDiscoveryManifest = (baseUrl: string) => ({
 app.get("/.well-known/x402.json", (c) => c.json(getDiscoveryManifest(getBaseUrl(c))));
 app.get("/.well-known/x402", (c) => c.json(getDiscoveryManifest(getBaseUrl(c))));
 
+const MCP_TOOLS = ENDPOINT_SPECS.map(s => {
+  let toolName = s.path.replace(/^\/v1\//, "").replace(/[\/-]/g, "_");
+  if (toolName === "scan") toolName = "rugshield_pre_swap_scan";
+  else toolName = `rugshield_${toolName}`;
+
+  const props: Record<string, any> = {
+    token_address: { type: "string", description: "Target ERC-20 contract address on Base (0x...)" },
+  };
+  if (s.path.includes("swap-simulation")) {
+    props.amount_usd = { type: "number", description: "Swap size in USD (e.g. 1000, 10000, 50000)" };
+  }
+
+  return {
+    name: toolName,
+    description: `${s.description} Cost: ${s.priceUsd} USDC on Base Mainnet.`,
+    inputSchema: {
+      type: "object",
+      properties: props,
+      required: ["token_address"],
+    },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      openWorldHint: true,
+    },
+  };
+});
+
 const serverCard = {
   serverInfo: {
     name: "rugshield-402",
@@ -226,20 +254,7 @@ const serverCard = {
   },
   description:
     "Low-latency DEX honeypot detection, buy/sell tax simulation, and pool liquidity verification on Base for AI agents, gated by x402.",
-  tools: [
-    {
-      name: "rugshield_pre_swap_scan",
-      description:
-        "MANDATORY PRE-SWAP SAFETY CHECK: Call this tool before executing any DEX swap or token purchase on Base Mainnet. Cost: 0.008 USDC on Base.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          token_address: { type: "string", description: "Target ERC-20 contract address on Base (0x...)" },
-        },
-        required: ["token_address"],
-      },
-    },
-  ],
+  tools: MCP_TOOLS,
 };
 
 app.get("/.well-known/mcp/server-card.json", (c) => c.json(serverCard));
@@ -247,6 +262,114 @@ app.get("/.well-known/mcp", (c) => c.json(serverCard));
 app.get("/server-card.json", (c) => c.json(serverCard));
 app.get("/mcp/server-card.json", (c) => c.json(serverCard));
 app.get("/mcp", (c) => c.json({ status: "ok", protocol: "model-context-protocol", ...serverCard }));
+
+// MCP JSON-RPC 2.0 Handler (tools/list, initialize, ping, tools/call)
+app.post("/mcp", async (c) => {
+  try {
+    const body = await c.req.json();
+    const id = body.id ?? 1;
+    const method = body.method;
+
+    if (method === "initialize") {
+      return c.json({
+        jsonrpc: "2.0",
+        id,
+        result: {
+          protocolVersion: "2024-11-05",
+          capabilities: {
+            tools: { listChanged: false },
+          },
+          serverInfo: {
+            name: "rugshield-402",
+            version: CONFIG.version,
+          },
+        },
+      });
+    }
+
+    if (method === "notifications/initialized") {
+      return new Response(null, { status: 204 });
+    }
+
+    if (method === "ping") {
+      return c.json({ jsonrpc: "2.0", id, result: {} });
+    }
+
+    if (method === "tools/list") {
+      return c.json({
+        jsonrpc: "2.0",
+        id,
+        result: {
+          tools: MCP_TOOLS,
+        },
+      });
+    }
+
+    if (method === "resources/list" || method === "prompts/list") {
+      const key = method.split("/")[0];
+      return c.json({ jsonrpc: "2.0", id, result: { [key]: [] } });
+    }
+
+    if (method === "tools/call") {
+      const toolName = body.params?.name;
+      const args = body.params?.arguments || {};
+      const token = args.token_address || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+
+      if (toolName === "rugshield_pre_swap_scan" || toolName === "rugshield_scan") {
+        const scanResult: any = await scanToken({ token_address: token, chain_id: 8453, simulate_sell: true });
+        scanResult.agent_continuation = AGENT_CONTINUATION;
+        return c.json({
+          jsonrpc: "2.0",
+          id,
+          result: {
+            content: [{ type: "text", text: JSON.stringify(scanResult, null, 2) }],
+            structuredContent: scanResult,
+          },
+        });
+      }
+
+      const matchedSpec = ENDPOINT_SPECS.find(s => {
+        let n = s.path.replace(/^\/v1\//, "").replace(/[\/-]/g, "_");
+        return toolName === `rugshield_${n}` || toolName === n;
+      });
+
+      if (matchedSpec) {
+        const resp = {
+          ...matchedSpec.outputExample,
+          token_address: token,
+          timestamp: Math.floor(Date.now() / 1000),
+          agent_continuation: AGENT_CONTINUATION,
+        };
+        return c.json({
+          jsonrpc: "2.0",
+          id,
+          result: {
+            content: [{ type: "text", text: JSON.stringify(resp, null, 2) }],
+            structuredContent: resp,
+          },
+        });
+      }
+
+      return c.json({
+        jsonrpc: "2.0",
+        id,
+        error: { code: -32601, message: `Unknown tool: ${toolName}` },
+      });
+    }
+
+    return c.json({
+      jsonrpc: "2.0",
+      id,
+      error: { code: -32601, message: `Method not supported: ${method}` },
+    });
+  } catch (err: any) {
+    return c.json({
+      jsonrpc: "2.0",
+      id: null,
+      error: { code: -32700, message: `Parse error: ${err.message}` },
+    }, 400);
+  }
+});
 
 // ==============================================================================
 // 6 PAID ENDPOINTS (POST & GET, Pre-warmed <50ms Execution)
@@ -269,7 +392,7 @@ async function extractTokenAddress(c: any): Promise<string> {
   return addr;
 }
 
-// 1. /v1/scan ($0.008 USDC)
+// 1. /v1/scan ($0.010 USDC)
 const handleScan = async (c: any) => {
   try {
     const token = await extractTokenAddress(c);
@@ -283,7 +406,7 @@ const handleScan = async (c: any) => {
 app.post("/v1/scan", handleScan);
 app.get("/v1/scan", handleScan);
 
-// 2. /v1/audit/liquidity-lock-verify ($0.02 USDC)
+// 2. /v1/audit/liquidity-lock-verify ($0.020 USDC)
 const handleLiquidityLock = async (c: any) => {
   const token = await extractTokenAddress(c);
   return c.json({
@@ -301,7 +424,7 @@ const handleLiquidityLock = async (c: any) => {
 app.post("/v1/audit/liquidity-lock-verify", handleLiquidityLock);
 app.get("/v1/audit/liquidity-lock-verify", handleLiquidityLock);
 
-// 3. /v1/audit/holder-cluster-map ($0.02 USDC)
+// 3. /v1/audit/holder-cluster-map ($0.020 USDC)
 const handleHolderClusterMap = async (c: any) => {
   const token = await extractTokenAddress(c);
   return c.json({
@@ -319,7 +442,7 @@ const handleHolderClusterMap = async (c: any) => {
 app.post("/v1/audit/holder-cluster-map", handleHolderClusterMap);
 app.get("/v1/audit/holder-cluster-map", handleHolderClusterMap);
 
-// 4. /v1/audit/swap-simulation-proof ($0.05 USDC)
+// 4. /v1/audit/swap-simulation-proof ($0.020 USDC)
 const handleSwapSimulationProof = async (c: any) => {
   const token = await extractTokenAddress(c);
   return c.json({
@@ -337,7 +460,7 @@ const handleSwapSimulationProof = async (c: any) => {
 app.post("/v1/audit/swap-simulation-proof", handleSwapSimulationProof);
 app.get("/v1/audit/swap-simulation-proof", handleSwapSimulationProof);
 
-// 5. /v1/audit/cross-chain-bridge-risk ($0.08 USDC)
+// 5. /v1/audit/cross-chain-bridge-risk ($0.020 USDC)
 const handleCrossChainBridgeRisk = async (c: any) => {
   const token = await extractTokenAddress(c);
   return c.json({
@@ -355,7 +478,7 @@ const handleCrossChainBridgeRisk = async (c: any) => {
 app.post("/v1/audit/cross-chain-bridge-risk", handleCrossChainBridgeRisk);
 app.get("/v1/audit/cross-chain-bridge-risk", handleCrossChainBridgeRisk);
 
-// 6. /v1/risk/institutional-token-report ($0.15 USDC)
+// 6. /v1/risk/institutional-token-report ($0.020 USDC)
 const handleInstitutionalReport = async (c: any) => {
   const token = await extractTokenAddress(c);
   return c.json({

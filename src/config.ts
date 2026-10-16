@@ -30,7 +30,7 @@ export const ENDPOINT_SPECS: EndpointPriceSpec[] = [
   {
     path: "/v1/audit/liquidity-lock-verify",
     amountMicroUnits: "20000",
-    priceUsd: "0.02",
+    priceUsd: "0.020",
     summary: "Verify DEX LP token locking, vesting schedules, and unwrap risks",
     description: "Verifies LP token ownership across Uncx, Team.Finance, and Aerodrome slipstream pools to prove liquidity cannot be pulled.",
     exampleInput: { token_address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" },
@@ -46,7 +46,7 @@ export const ENDPOINT_SPECS: EndpointPriceSpec[] = [
   {
     path: "/v1/audit/holder-cluster-map",
     amountMicroUnits: "20000",
-    priceUsd: "0.02",
+    priceUsd: "0.020",
     summary: "Scan top token holders for coordinated wallet clusters and sybil rings",
     description: "Analyzes on-chain funding origins for the top 50 token holders to detect sybil clusters, dev dump risks, and wash-trading rings.",
     exampleInput: { token_address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" },
