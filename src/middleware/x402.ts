@@ -2,7 +2,7 @@ import { createMiddleware } from "hono/factory";
 import { LRUCache } from "lru-cache";
 import { createHash, randomUUID } from "node:crypto";
 import { verifyTypedData, getAddress, isAddress } from "viem";
-import { CONFIG } from "../config.js";
+import { CONFIG, ENDPOINT_MAP, ENDPOINT_SPECS, type EndpointPriceSpec } from "../config.js";
 
 // Replay protection cache: max 100,000 items, TTL 24 hours (86,400,000 ms)
 const replayCache = new LRUCache<string, boolean>({
@@ -45,9 +45,10 @@ export const x402Middleware = createMiddleware<{
     return c.body(null, 204);
   }
 
-  // Only protect /v1/scan
+  // Check if this route is one of our paid endpoints
   const path = c.req.path;
-  if (!path.startsWith("/v1/scan")) {
+  const spec = ENDPOINT_MAP.get(path);
+  if (!spec) {
     return next();
   }
 
@@ -59,12 +60,11 @@ export const x402Middleware = createMiddleware<{
     c.req.header("payment-signature");
 
   if (!rawPaymentHeader) {
-    return return402Challenge(c);
+    return return402Challenge(c, spec);
   }
 
   try {
     let payloadStr = rawPaymentHeader.trim();
-    // Decode base64 if not starting with {
     if (!payloadStr.startsWith("{")) {
       try {
         payloadStr = Buffer.from(payloadStr, "base64").toString("utf-8");
@@ -75,7 +75,6 @@ export const x402Middleware = createMiddleware<{
 
     const parsed = JSON.parse(payloadStr);
 
-    // Parse authorization data
     const auth =
       parsed.payload?.authorization ||
       parsed.authorization ||
@@ -89,7 +88,7 @@ export const x402Middleware = createMiddleware<{
     ) as `0x${string}`;
 
     if (!auth || !signature) {
-      return return402Challenge(c, "Missing authorization or signature payload");
+      return return402Challenge(c, spec, "Missing authorization or signature payload");
     }
 
     const from = (auth.from || auth.payer || auth.agentAddress) as `0x${string}`;
@@ -99,26 +98,28 @@ export const x402Middleware = createMiddleware<{
     const validAfter = BigInt(auth.validAfter ?? 0);
     const nonce = (auth.nonce ?? "0x0000000000000000000000000000000000000000000000000000000000000000") as `0x${string}`;
 
-    // Verify recipient matches Wallet A
+    // Verify recipient matches Merchant Payout Wallet
     if (!isAddress(to) || getAddress(to) !== getAddress(CONFIG.merchantAddress)) {
-      return return402Challenge(c, `Invalid recipient: must pay ${CONFIG.merchantAddress}`);
+      return return402Challenge(c, spec, `Invalid recipient: must pay ${CONFIG.merchantAddress}`);
     }
 
-    // Verify amount is at least 5000 micro-units
-    if (value < BigInt(CONFIG.amountMicroUnits)) {
+    // Verify amount is at least route required micro-units
+    const requiredUnits = BigInt(spec.amountMicroUnits);
+    if (value < requiredUnits) {
       return return402Challenge(
         c,
-        `Insufficient payment: requires ${CONFIG.amountMicroUnits} micro-units USDC`
+        spec,
+        `Insufficient payment: requires ${spec.amountMicroUnits} micro-units USDC, received ${value}`
       );
     }
 
     // Verify validity window
     const nowSec = BigInt(Math.floor(Date.now() / 1000));
     if (validBefore < nowSec - 60n) {
-      return return402Challenge(c, "Payment authorization expired");
+      return return402Challenge(c, spec, "Payment authorization expired");
     }
     if (validAfter > nowSec + 300n) {
-      return return402Challenge(c, "Payment authorization not yet valid");
+      return return402Challenge(c, spec, "Payment authorization not yet valid");
     }
 
     // Replay protection via signature hash
@@ -153,16 +154,17 @@ export const x402Middleware = createMiddleware<{
       ],
     };
 
+    const formattedNonce = nonce.startsWith("0x") && nonce.length === 66 ? nonce : (`0x${nonce.replace(/^0x/, "").padStart(64, "0")}` as `0x${string}`);
+
     const message = {
       from: getAddress(from),
       to: getAddress(to),
       value,
       validAfter,
       validBefore,
-      nonce: nonce.startsWith("0x") && nonce.length === 66 ? nonce : (`0x${nonce.replace(/^0x/, "").padStart(64, "0")}` as `0x${string}`),
+      nonce: formattedNonce,
     };
 
-    // Try verifying TransferWithAuthorization
     let isValid = false;
     try {
       isValid = await verifyTypedData({
@@ -174,7 +176,6 @@ export const x402Middleware = createMiddleware<{
         signature,
       });
     } catch {
-      // Also try ReceiveWithAuthorization if client used that
       try {
         const receiveTypes = {
           ReceiveWithAuthorization: [
@@ -200,13 +201,88 @@ export const x402Middleware = createMiddleware<{
     }
 
     if (!isValid) {
-      return return402Challenge(c, "Invalid EIP-712 cryptographic signature");
+      return return402Challenge(c, spec, "Invalid EIP-712 cryptographic signature");
+    }
+
+    // Production on-chain settlement via CanaryGuard CDP Facilitator Relay
+    const host = c.req.header("host") || `localhost:${CONFIG.port}`;
+    const proto = c.req.header("x-forwarded-proto") || (host.includes("onrender.com") ? "https" : "http");
+    const baseUrl = host.includes("onrender.com") ? "https://rugshield-402.onrender.com" : `${proto}://${host}`;
+    const resUrl = `${baseUrl}${spec.path}`;
+
+    const cleanRequirements = {
+      scheme: "exact",
+      network: `eip155:${CONFIG.chainId}`,
+      amount: spec.amountMicroUnits,
+      asset: CONFIG.usdcAddress,
+      payTo: CONFIG.merchantAddress,
+      maxTimeoutSeconds: 300,
+      extra: { name: "USD Coin", version: "2" },
+    };
+
+    const resourceObj = {
+      url: resUrl,
+      description: spec.description,
+      mimeType: "application/json",
+    };
+
+    const relayBody = {
+      paymentPayload: {
+        x402Version: 2,
+        resource: resourceObj,
+        extensions: parsed.extensions || {
+          bazaar: buildBazaarExtension(spec),
+        },
+        accepted: cleanRequirements,
+        payload: {
+          signature,
+          authorization: {
+            from: getAddress(from),
+            to: getAddress(to),
+            value: value.toString(),
+            validAfter: validAfter.toString(),
+            validBefore: validBefore.toString(),
+            nonce: formattedNonce,
+          },
+        },
+      },
+      paymentRequirements: cleanRequirements,
+    };
+
+    let settleData: any = null;
+    try {
+      const relayRes = await fetch("https://canaryguard-402.onrender.com/v1/internal/cdp-settle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(relayBody),
+        signal: AbortSignal.timeout(35000),
+      });
+      settleData = await relayRes.json().catch(() => ({}));
+      if (!relayRes.ok || !settleData.success) {
+        const errMsg = settleData.error || settleData.errorReason || `Relay HTTP ${relayRes.status}`;
+        console.warn(`[rugshield-402] On-chain settlement rejected: ${errMsg}`);
+        return return402Challenge(c, spec, `On-chain settlement rejected: ${errMsg}`);
+      }
+    } catch (relayErr: any) {
+      console.error(`[rugshield-402] CDP relay exception: ${relayErr.message}`);
+      return return402Challenge(c, spec, `CDP relay exception: ${relayErr.message}`);
     }
 
     // Mark as consumed in replay cache
     replayCache.set(sigHash, true);
     X402_METRICS.settlements++;
 
+    const txHash = settleData.transaction || `0x${sigHash}`;
+    const paymentInfo = {
+      success: true,
+      payer: settleData.payer || getAddress(from),
+      transaction: txHash,
+      amount: value.toString(),
+      network: settleData.network || `eip155:${CONFIG.chainId}`,
+      resource: resUrl,
+    };
+
+    c.header("PAYMENT-RESPONSE", Buffer.from(JSON.stringify(paymentInfo)).toString("base64"));
     c.set("payment", {
       payer: getAddress(from),
       amount: value,
@@ -215,21 +291,70 @@ export const x402Middleware = createMiddleware<{
 
     return next();
   } catch (err: any) {
-    return return402Challenge(c, `Malformed payment payload: ${err.message}`);
+    return return402Challenge(c, spec, `Malformed payment payload: ${err.message}`);
   }
 });
 
-function return402Challenge(c: any, reason?: string) {
+function buildBazaarExtension(spec: EndpointPriceSpec) {
+  return {
+    info: {
+      input: {
+        type: "http",
+        method: "POST",
+        bodyType: "json",
+        body: spec.exampleInput,
+      },
+      output: {
+        type: "json",
+        example: spec.outputExample,
+      },
+    },
+    schema: {
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      type: "object",
+      properties: {
+        input: {
+          type: "object",
+          properties: {
+            type: { type: "string", const: "http" },
+            method: { type: "string", enum: ["POST", "GET"] },
+            bodyType: { type: "string", enum: ["json"] },
+            body: { type: "object", properties: {} },
+          },
+          required: ["type", "method", "bodyType", "body"],
+          additionalProperties: false,
+        },
+        output: {
+          type: "object",
+          properties: {
+            type: { type: "string" },
+            example: {
+              type: "object",
+              properties: {
+                status: { type: "string" },
+              },
+              required: ["status"],
+              additionalProperties: true,
+            },
+          },
+          required: ["type"],
+        },
+      },
+      required: ["input"],
+    },
+  };
+}
+
+function return402Challenge(c: any, spec: EndpointPriceSpec, reason?: string) {
   X402_METRICS.challenges++;
   const host = c.req.header("host") || `localhost:${CONFIG.port}`;
   const proto = c.req.header("x-forwarded-proto") || (host.includes("onrender.com") ? "https" : "http");
   const baseUrl = host.includes("onrender.com") ? "https://rugshield-402.onrender.com" : `${proto}://${host}`;
-  const resUrl = `${baseUrl}/v1/scan`;
-  const desc = "Low-latency token honeypot detection, tax simulation, and pool liquidity verification for AI agents.";
+  const resUrl = `${baseUrl}${spec.path}`;
 
   const challengeId = randomUUID();
   const reqPayload = {
-    amount: CONFIG.amountMicroUnits,
+    amount: spec.amountMicroUnits,
     chainId: CONFIG.chainId,
     currency: CONFIG.usdcAddress,
     decimals: 6,
@@ -246,62 +371,12 @@ function return402Challenge(c: any, reason?: string) {
 
   const resourceObj = {
     url: resUrl,
-    description: desc,
+    description: spec.description,
     mimeType: "application/json",
   };
 
-  const bazaarExtension = {
-    info: {
-      input: {
-        type: "http",
-        method: "POST",
-        bodyType: "json",
-        body: {
-          token_address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-          chain: "base",
-        },
-      },
-      output: {
-        type: "json",
-        example: {
-          status: "success",
-          token_address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-          symbol: "USDC",
-          is_honeypot: false,
-          buy_tax_bps: 0,
-          sell_tax_bps: 0,
-          simulation_status: "passed",
-        },
-      },
-    },
-    schema: {
-      $schema: "https://json-schema.org/draft/2020-12/schema",
-      type: "object",
-      properties: {
-        input: {
-          type: "object",
-          properties: {
-            type: { type: "string", const: "http" },
-            method: { type: "string", enum: ["POST", "GET"] },
-            bodyType: { type: "string", enum: ["json"] },
-            body: {
-              type: "object",
-              properties: {
-                token_address: { type: "string" },
-                chain: { type: "string" },
-              },
-              required: ["token_address"],
-            },
-          },
-          required: ["type", "method", "bodyType", "body"],
-          additionalProperties: false,
-        },
-      },
-      required: ["input"],
-    },
-  };
+  const bazaarExtension = buildBazaarExtension(spec);
 
-  // Construct standard Base x402 PAYMENT-REQUIRED header for standard x402 clients
   const x402Pr = {
     x402Version: 2,
     resource: resourceObj,
@@ -311,14 +386,10 @@ function return402Challenge(c: any, reason?: string) {
         scheme: "exact",
         network: `eip155:${CONFIG.chainId}`,
         asset: CONFIG.usdcAddress,
-        amount: CONFIG.amountMicroUnits,
-        price: CONFIG.unitPriceUsd,
-        maxTimeoutSeconds: 3600,
+        amount: spec.amountMicroUnits,
+        maxTimeoutSeconds: 300,
         payTo: CONFIG.merchantAddress,
-        instructions: "Pay using EIP-712/EIP-3009 transfer authorization",
         extra: { name: "USD Coin", version: "2" },
-        description: desc,
-        mimeType: "application/json",
       },
     ],
   };
@@ -337,12 +408,12 @@ function return402Challenge(c: any, reason?: string) {
       extensions: { bazaar: bazaarExtension },
       accepts: x402Pr.accepts,
       payTo: CONFIG.merchantAddress,
-      amount: CONFIG.amountMicroUnits,
+      amount: spec.amountMicroUnits,
       asset: CONFIG.usdcAddress,
-      network: CONFIG.network,
+      network: `eip155:${CONFIG.chainId}`,
       chainId: CONFIG.chainId,
+      price: `${spec.priceUsd} USDC`,
       facilitator: CONFIG.facilitator,
-      unit_price_usd: CONFIG.unitPriceUsd,
       ...(reason ? { details: reason } : {}),
     },
     402
