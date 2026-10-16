@@ -11,8 +11,8 @@ export interface EndpointPriceSpec {
 export const ENDPOINT_SPECS: EndpointPriceSpec[] = [
   {
     path: "/v1/scan",
-    amountMicroUnits: "8000",
-    priceUsd: "0.008",
+    amountMicroUnits: "10000",
+    priceUsd: "0.010",
     summary: "Simulate DEX swap and verify honeypot / tax safety",
     description: "Simulates buy/sell orders via state overrides to detect honeypots, compute exact transfer taxes in bps, and verify pool liquidity depth.",
     exampleInput: { token_address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", chain_id: 8453, simulate_sell: true },
@@ -61,8 +61,8 @@ export const ENDPOINT_SPECS: EndpointPriceSpec[] = [
   },
   {
     path: "/v1/audit/swap-simulation-proof",
-    amountMicroUnits: "50000",
-    priceUsd: "0.05",
+    amountMicroUnits: "20000",
+    priceUsd: "0.020",
     summary: "State-override swap simulation with exact slippage & price impact proof",
     description: "Executes state-override simulation of $1k, $10k, and $50k swap orders on Base Mainnet, calculating exact slippage, gas overhead, and MEV frontrun exposure.",
     exampleInput: { token_address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", amount_usd: 10000 },
@@ -77,8 +77,8 @@ export const ENDPOINT_SPECS: EndpointPriceSpec[] = [
   },
   {
     path: "/v1/audit/cross-chain-bridge-risk",
-    amountMicroUnits: "80000",
-    priceUsd: "0.08",
+    amountMicroUnits: "20000",
+    priceUsd: "0.020",
     summary: "Bridge proof verification and cross-chain message replay auditor",
     description: "Audits canonical Base bridge and CCIP/LayerZero endpoints for message replay vulnerabilities, unbacked wrapped collateral, and admin multisig latency.",
     exampleInput: { token_address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" },
@@ -93,8 +93,8 @@ export const ENDPOINT_SPECS: EndpointPriceSpec[] = [
   },
   {
     path: "/v1/risk/institutional-token-report",
-    amountMicroUnits: "150000",
-    priceUsd: "0.15",
+    amountMicroUnits: "20000",
+    priceUsd: "0.020",
     summary: "Full 7-vector institutional token security report and audit dossier",
     description: "Generates an end-to-end cryptographic audit report covering bytecode decompilation, honeypot tax simulation, LP lock proofs, holder clusters, and bridge risk.",
     exampleInput: { token_address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" },
@@ -122,8 +122,8 @@ export const CONFIG = {
   merchantAddress: (process.env.MERCHANT_ADDRESS || "0x73279fa4BadA7CAC888c62CDa4f5c8104765f6f1") as `0x${string}`,
   usdcAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" as `0x${string}`,
   wethAddress: "0x4200000000000000000000000000000000000006" as `0x${string}`,
-  amountMicroUnits: "8000", // Default $0.008 USDC
-  unitPriceUsd: "0.008",
+  amountMicroUnits: "10000", // Default $0.010 USDC
+  unitPriceUsd: "0.010",
   facilitator: "https://api.cdp.coinbase.com/platform/v2/x402",
   rpcEndpoints: [
     "https://mainnet.base.org",
@@ -151,21 +151,21 @@ export const AGENT_CONTINUATION = {
       service: "CanaryGuard-402",
       endpoint: "https://canaryguard-402.onrender.com/v1/risk/full-portfolio-audit",
       method: "POST",
-      cost: "0.25 USDC",
+      cost: "0.02 USDC",
       reason: "Institutional Base token & portfolio security audit with bytecode + LP lock verification"
     },
     {
       service: "StealthGuard-402",
       endpoint: "https://stealthguard-402.onrender.com/v1/research/deep-web-dossier",
       method: "POST",
-      cost: "0.25 USDC",
+      cost: "0.02 USDC",
       reason: "Multi-source stealth web synthesis + CanaryGuard injection firewall dossier"
     },
     {
       service: "RugShield-402",
       endpoint: "https://rugshield-402.onrender.com/v1/risk/institutional-token-report",
       method: "POST",
-      cost: "0.15 USDC",
+      cost: "0.02 USDC",
       reason: "Full 7-vector token risk audit: bytecode, taxes, LP lock, whale clusters, and swap simulation"
     }
   ]
