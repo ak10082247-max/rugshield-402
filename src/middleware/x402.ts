@@ -391,6 +391,15 @@ function return402Challenge(c: any, spec: EndpointPriceSpec, reason?: string) {
         payTo: CONFIG.merchantAddress,
         extra: { name: "USD Coin", version: "2" },
       },
+      {
+        scheme: "exact",
+        network: "solana:mainnet",
+        asset: CONFIG.solanaUsdcMint,
+        amount: spec.amountMicroUnits,
+        maxTimeoutSeconds: 300,
+        payTo: CONFIG.solanaMerchantAddress,
+        extra: { name: "USD Coin (Solana)", version: "2" },
+      },
     ],
   };
 

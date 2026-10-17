@@ -120,6 +120,8 @@ export const CONFIG = {
   chainId: 8453,
   network: "base",
   merchantAddress: (process.env.MERCHANT_ADDRESS || "0x73279fa4BadA7CAC888c62CDa4f5c8104765f6f1") as `0x${string}`,
+  solanaMerchantAddress: process.env.SOLANA_MERCHANT_ADDRESS || "3tQ4GthjUMqNsyrb1rZMocMHoNewFQWjDUvHZqWeYuCN",
+  solanaUsdcMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
   usdcAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" as `0x${string}`,
   wethAddress: "0x4200000000000000000000000000000000000006" as `0x${string}`,
   amountMicroUnits: "10000", // Default $0.010 USDC
