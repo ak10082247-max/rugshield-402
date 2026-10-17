@@ -75,6 +75,86 @@ export const x402Middleware = createMiddleware<{
 
     const parsed = JSON.parse(payloadStr);
 
+    // Branch 1: Solana Mainnet x402 Payment Settlement via PayAI Facilitator
+    const incomingNetwork = (parsed.accepted?.network || parsed.network || "").toString();
+    if (incomingNetwork.startsWith("solana") || parsed.payload?.transaction) {
+      const txB64 = (parsed.payload?.transaction || parsed.transaction || "").toString();
+      if (!txB64) {
+        return return402Challenge(c, spec, "Missing Solana serialized transaction in payload.transaction");
+      }
+      const solSigHash = createHash("sha256").update(txB64).digest("hex");
+      if (replayCache.has(solSigHash)) {
+        X402_METRICS.replaysPrevented++;
+        return c.json({ error: "replay_detected", message: "Solana payment transaction already consumed." }, 409);
+      }
+
+      const host = c.req.header("host") || `localhost:${CONFIG.port}`;
+      const proto = c.req.header("x-forwarded-proto") || (host.includes("onrender.com") ? "https" : "http");
+      const baseUrl = host.includes("onrender.com") ? "https://rugshield-402.onrender.com" : `${proto}://${host}`;
+      const resUrl = `${baseUrl}${spec.path}`;
+
+      const solanaRequirements = {
+        scheme: "exact",
+        network: CONFIG.solanaNetwork,
+        amount: spec.amountMicroUnits,
+        asset: CONFIG.solanaUsdcMint,
+        payTo: CONFIG.solanaMerchantAddress,
+        maxTimeoutSeconds: 300,
+        extra: {
+          name: "USD Coin (Solana)",
+          version: "2",
+          feePayer: CONFIG.solanaFeePayer,
+        },
+      };
+
+      const resourceObj = {
+        url: resUrl,
+        description: spec.description,
+        mimeType: "application/json",
+      };
+
+      const payaiBody = {
+        x402Version: 2,
+        paymentPayload: {
+          x402Version: 2,
+          resource: resourceObj,
+          extensions: parsed.extensions || { bazaar: buildBazaarExtension(spec) },
+          accepted: solanaRequirements,
+          payload: parsed.payload || { transaction: txB64 },
+        },
+        paymentRequirements: solanaRequirements,
+      };
+
+      try {
+        const settleRes = await fetch(`${CONFIG.payaiFacilitator}/settle`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payaiBody),
+          signal: AbortSignal.timeout(30000),
+        });
+        const settleData: any = await settleRes.json().catch(() => ({}));
+        if (!settleRes.ok || !settleData.success) {
+          const errMsg = settleData.errorReason || settleData.error || `PayAI HTTP ${settleRes.status}`;
+          return return402Challenge(c, spec, `Solana PayAI settlement rejected: ${errMsg}`);
+        }
+
+        replayCache.set(solSigHash, true);
+        X402_METRICS.settlements++;
+        const paymentInfo = {
+          success: true,
+          payer: settleData.payer || parsed.payload?.payer || "solana-payer",
+          transaction: settleData.transaction || solSigHash,
+          amount: spec.amountMicroUnits,
+          network: CONFIG.solanaNetwork,
+          resource: resUrl,
+        };
+        c.header("PAYMENT-RESPONSE", Buffer.from(JSON.stringify(paymentInfo)).toString("base64"));
+        return next();
+      } catch (solErr: any) {
+        return return402Challenge(c, spec, `PayAI facilitator exception: ${solErr.message}`);
+      }
+    }
+
     const auth =
       parsed.payload?.authorization ||
       parsed.authorization ||
@@ -393,12 +473,12 @@ function return402Challenge(c: any, spec: EndpointPriceSpec, reason?: string) {
       },
       {
         scheme: "exact",
-        network: "solana:mainnet",
+        network: CONFIG.solanaNetwork,
         asset: CONFIG.solanaUsdcMint,
         amount: spec.amountMicroUnits,
         maxTimeoutSeconds: 300,
         payTo: CONFIG.solanaMerchantAddress,
-        extra: { name: "USD Coin (Solana)", version: "2" },
+        extra: { name: "USD Coin (Solana)", version: "2", feePayer: CONFIG.solanaFeePayer },
       },
     ],
   };
