@@ -225,12 +225,12 @@ app.get("/.well-known/x402.json", (c) => c.json(getDiscoveryManifest(getBaseUrl(
 app.get("/.well-known/x402", (c) => c.json(getDiscoveryManifest(getBaseUrl(c))));
 
 const MCP_TOOLS = ENDPOINT_SPECS.map(s => {
-  let toolName = s.path.replace(/^\/v1\//, "").replace(/[\/-]/g, "_");
+  let toolName = s.path.replace(/^\/(api\/)?v1\//, "").replace(/[\/-]/g, "_");
   if (toolName === "scan") toolName = "rugshield_pre_swap_scan";
   else toolName = `rugshield_${toolName}`;
 
   const props: Record<string, any> = {
-    token_address: { type: "string", description: "Target ERC-20 contract address on Base (0x...)" },
+    token_address: { type: "string", description: "Target ERC-20 contract address on Base (0x...) or Solana SPL Mint" },
   };
   if (s.path.includes("swap-simulation")) {
     props.amount_usd = { type: "number", description: "Swap size in USD (e.g. 1000, 10000, 50000)" };
@@ -238,7 +238,7 @@ const MCP_TOOLS = ENDPOINT_SPECS.map(s => {
 
   return {
     name: toolName,
-    description: `${s.description} Cost: ${s.priceUsd} USDC on Base Mainnet.`,
+    description: `${s.description} Cost: ${s.priceUsd} USDC on Base & Solana Mainnet.`,
     inputSchema: {
       type: "object",
       properties: props,
@@ -334,7 +334,7 @@ app.post("/mcp", async (c) => {
       }
 
       const matchedSpec = ENDPOINT_SPECS.find(s => {
-        let n = s.path.replace(/^\/v1\//, "").replace(/[\/-]/g, "_");
+        let n = s.path.replace(/^\/(api\/)?v1\//, "").replace(/[\/-]/g, "_");
         return toolName === `rugshield_${n}` || toolName === n;
       });
 
@@ -897,6 +897,7 @@ const LIVE_ALERTS_BUFFER: Array<Record<string, any>> = [
     teaser_verdict: "50% FREE TEASER: Pool Active ($18.4M Liq) | Insider Cluster Map & Smart-Money Netflow LOCKED",
     unlock_url: "https://rugshield-402.onrender.com/?token=DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
     blink_url: "https://rugshield-402.onrender.com/api/actions/scan?token=DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+    solana_blink_url: "https://dial.to/?action=solana-action:https%3A%2F%2Frugshield-402.onrender.com%2Fapi%2Factions%2Fscan%3Ftoken%3DDezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
     price_usdc: "0.010",
     timestamp: Math.floor(Date.now() / 1000),
   },
@@ -909,6 +910,7 @@ const LIVE_ALERTS_BUFFER: Array<Record<string, any>> = [
     teaser_verdict: "50% FREE TEASER: Pool Active ($78.5M Liq) | Insider Cluster Map & Smart-Money Netflow LOCKED",
     unlock_url: "https://rugshield-402.onrender.com/?token=0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b",
     blink_url: "https://rugshield-402.onrender.com/api/actions/scan?token=0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b",
+    solana_blink_url: "https://dial.to/?action=solana-action:https%3A%2F%2Frugshield-402.onrender.com%2Fapi%2Factions%2Fscan%3Ftoken%3D0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b",
     price_usdc: "0.010",
     timestamp: Math.floor(Date.now() / 1000),
   },
@@ -929,15 +931,18 @@ app.get("/v1/feed/live-alerts", (c) => {
 app.post("/v1/feed/live-alerts", async (c) => {
   try {
     const body = await c.req.json();
+    const tokAddr = body.token_address || "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263";
+    const rawBlink = `https://rugshield-402.onrender.com/api/actions/scan?token=${tokAddr}`;
     const item = {
       id: body.id || `alert-${Date.now()}`,
       chain: body.chain || "solana",
       symbol: body.symbol || "TOKEN",
-      token_address: body.token_address || "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+      token_address: tokAddr,
       liquidity_usd: Number(body.liquidity_usd || 50000),
       teaser_verdict: body.teaser_verdict || "50% FREE TEASER READY — UNLOCK FULL REPORT FOR $0.01 USDC",
-      unlock_url: body.unlock_url || `https://rugshield-402.onrender.com/?token=${body.token_address || ""}`,
-      blink_url: body.blink_url || `https://rugshield-402.onrender.com/api/actions/scan?token=${body.token_address || ""}`,
+      unlock_url: body.unlock_url || `https://rugshield-402.onrender.com/?token=${tokAddr}`,
+      blink_url: body.blink_url || rawBlink,
+      solana_blink_url: body.solana_blink_url || `https://dial.to/?action=solana-action:${encodeURIComponent(rawBlink)}`,
       price_usdc: "0.010",
       timestamp: Math.floor(Date.now() / 1000),
     };

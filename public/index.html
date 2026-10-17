@@ -424,6 +424,7 @@
         value="0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b"
       />
       <button class="scan-btn" onclick="runFreeTeaser()">⚡ Run Instant Scan (50% Free)</button>
+      <button class="scan-btn" style="background:linear-gradient(135deg,#9945ff,#14f195);color:#04130d;" onclick="copyDialectBlinkUrl()">⚡ Copy 1-Click Solana Blink for X / Telegram</button>
     </div>
 
     <div class="report-grid">
@@ -505,6 +506,9 @@
             <button class="btn-pay-base" onclick="unlockWithBase()">
               🔵 Unlock Full Report — $0.01 USDC on Base (Coinbase Wallet / MetaMask)
             </button>
+            <button class="btn-pay-sol" style="background:rgba(153,69,255,0.18);color:#e2e8f0;border:1px solid #9945ff;" onclick="copyDialectBlinkUrl()">
+              ⚡ Copy 1-Click Solana Blink for X / Telegram
+            </button>
           </div>
           <div class="status-log" id="paymentStatus">Ready for 1-click x402 settlement on Solana or Base Mainnet.</div>
         </div>
@@ -528,6 +532,19 @@
     const SOLANA_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
     const SOLANA_CAIP2 = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
     const PAYAI_FEE_PAYER = "CjNFTjvBhbJJd2B5ePPMHRLx1ELZpa8dwQgGL727eKww";
+
+    function copyDialectBlinkUrl() {
+      const target = (document.getElementById("targetInput").value || "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263").trim();
+      const actionUrl = `${window.location.origin}/api/actions/scan?token=${encodeURIComponent(target)}`;
+      const dialUrl = `https://dial.to/?action=solana-action:${encodeURIComponent(actionUrl)}`;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(dialUrl).catch(() => {});
+      }
+      const statusEl = document.getElementById("paymentStatus");
+      if (statusEl) {
+        statusEl.textContent = `✅ Copied 1-Click Solana Blink URL for X / Telegram: ${dialUrl}`;
+      }
+    }
 
     function detectPaidEndpoint() {
       const host = window.location.hostname;
