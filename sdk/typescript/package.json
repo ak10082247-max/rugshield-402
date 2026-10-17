@@ -1,0 +1,55 @@
+{
+  "name": "@kurox_real/rugshield-client",
+  "version": "1.0.0",
+  "description": "Official TypeScript/JavaScript client for RugShield 402 honeypot detector, tax simulator, and LP lock verifier on Base via x402.",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "rugshield",
+    "honeypot",
+    "anti-rug",
+    "dex",
+    "base",
+    "usdc",
+    "x402",
+    "solana",
+    "trading-bot",
+    "ai-agent"
+  ],
+  "author": "kurox_real",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ak10082247-max/rugshield-402.git",
+    "directory": "sdk/typescript"
+  },
+  "dependencies": {
+    "@x402/core": "^2.28.0",
+    "@x402/evm": "^2.28.0",
+    "@x402/fetch": "^2.28.0",
+    "viem": "^2.57.4"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}
