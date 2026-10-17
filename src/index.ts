@@ -404,7 +404,7 @@ const handleScan = async (c: any) => {
     return c.json({
       status: "success",
       chain: "solana",
-      network: SOLANA_NETWORK,
+      network: config.solanaNetwork,
       token_address: token,
       is_honeypot: false,
       mint_authority_revoked: true,
