@@ -1,25 +1,6 @@
 {
-  "$schema": "https://glama.ai/mcp/schema/v1",
-  "name": "rugshield-402",
-  "title": "RugShield 402",
-  "description": "Low-latency token honeypot detection, buy/sell tax simulation, and pool liquidity verification for autonomous trading agents on Base.",
-  "repository": "https://github.com/ak10082247-max/rugshield-402",
-  "website": "https://rugshield-402.onrender.com",
-  "license": "MIT",
-  "keywords": [
-    "x402",
-    "base",
-    "usdc",
-    "defi-safety",
-    "honeypot",
-    "mcp-server",
-    "agentkit",
-    "elizaos"
-  ],
-  "tools": [
-    {
-      "name": "rugshield_pre_swap_scan",
-      "description": "Simulates DEX buy/sell orders on Base to detect honeypots and fee drains before executing trades."
-    }
+  "$schema": "https://glama.ai/mcp/schemas/server.json",
+  "maintainers": [
+    "ak10082247-max"
   ]
 }
