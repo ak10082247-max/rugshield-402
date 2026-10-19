@@ -129,9 +129,53 @@ sequenceDiagram
 
 ## 📦 Developer SDK & Framework Integrations
 
-RugShield is also packaged for automated multi-agent frameworks:
+RugShield is packaged for automated multi-agent frameworks with 100% gasless autonomous payment settlement ($0 ETH / $0 SOL required):
 
-### 1. ElizaOS Autonomous Agent Plugin
+### 1. Autonomous Agent Auto-Pay Quickstart (TypeScript)
+
+Wrap standard `fetch` with `@x402/fetch` to automatically handle `HTTP 402` challenges, sign EIP-712 transfer authorizations on Base, and retry in under 15ms:
+
+```bash
+npm install @x402/fetch @x402/core @x402/evm viem
+```
+
+```typescript
+import { wrapFetchWithPayment } from "@x402/fetch";
+import { x402Client } from "@x402/core/client";
+import { ExactEvmScheme } from "@x402/evm/exact/client";
+import { privateKeyToAccount } from "viem/accounts";
+
+const account = privateKeyToAccount(process.env.AGENT_PRIVATE_KEY as `0x${string}`);
+const client = new x402Client();
+client.register("eip155:8453", new ExactEvmScheme(account));
+
+// 1-line wrapper automatically signs & unlocks full 100% honeypot simulation
+const xFetch = wrapFetchWithPayment(fetch, client);
+const res = await xFetch("https://rugshield-402.onrender.com/v1/scan", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ token_address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", simulate_sell: true }),
+});
+const report = await res.json();
+console.log("Full Verified Analysis:", report);
+```
+
+### 2. Autonomous Agent Auto-Pay Quickstart (Python)
+
+Using the built-in Python client (`sdk/python/rugshield.py`):
+
+```python
+from rugshield import RugShieldClient
+
+# Pass your agent wallet private key - automatically handles 402 challenges & EIP-712 signing
+client = RugShieldClient(private_key="0xYOUR_AGENT_PRIVATE_KEY")
+report = client.scan_token("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913")
+
+print(f"Honeypot: {report.get('is_honeypot')}")
+print(f"Exact Sell Tax: {report.get('sell_tax_bps')} bps")
+```
+
+### 3. ElizaOS Autonomous Agent Plugin
 ```bash
 npm install @kurox_real/plugin-rugshield-402
 ```
@@ -144,7 +188,7 @@ export const character = {
 };
 ```
 
-### 2. Coinbase AgentKit (LangChain / Python / TS)
+### 4. Coinbase AgentKit (LangChain / Python / TS)
 ```bash
 npm install @kurox_real/agentkit-rugshield-402
 ```
@@ -157,8 +201,9 @@ const agentKit = await AgentKit.from({
 });
 ```
 
-### 3. Direct REST API (cURL)
+### 5. Direct REST API (cURL)
 ```bash
+# Returns 402 with structured 50% free preview + unlock instructions:
 curl -X POST https://rugshield-402.onrender.com/v1/scan \
   -H "Content-Type: application/json" \
   -d '{"token_address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", "simulate_sell": true}'
