@@ -275,6 +275,24 @@ app.post("/mcp", async (c) => {
     const id = body.id ?? 1;
     const method = body.method;
 
+    if (!method || Object.keys(body || {}).length === 0) {
+      return c.json({
+        jsonrpc: "2.0",
+        id,
+        result: {
+          protocolVersion: "2024-11-05",
+          capabilities: {
+            tools: { listChanged: false },
+          },
+          serverInfo: {
+            name: "rugshield-402",
+            version: CONFIG.version,
+          },
+          tools: MCP_TOOLS,
+        },
+      });
+    }
+
     if (method === "initialize") {
       return c.json({
         jsonrpc: "2.0",
