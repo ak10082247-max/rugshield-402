@@ -13,7 +13,8 @@
     "dev": "tsx src/index.ts",
     "scan": "tsx src/bin/cli.ts",
     "worker:scanner": "tsx scripts/start_scanner_daemon.ts",
-    "mcp": "tsx src/mcp/server.ts",
+    "mcp": "node dist/mcp/server.js",
+    "mcp:dev": "tsx src/mcp/server.ts",
     "bot": "tsx scripts/start_telegram_bot.ts",
     "test": "tsx test/simulator.test.ts",
     "seed": "tsx scripts/seed_payment.ts"
