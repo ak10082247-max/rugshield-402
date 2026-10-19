@@ -995,11 +995,70 @@ app.get("/robots.txt", (c) => {
 app.get("/sitemap.xml", (c) => {
   const baseUrl = getBaseUrl(c);
   return c.body(
-    `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url><loc>${baseUrl}/</loc><changefreq>hourly</changefreq></url>\n  <url><loc>${baseUrl}/llms.txt</loc><changefreq>hourly</changefreq></url>\n  <url><loc>${baseUrl}/.well-known/x402.json</loc><changefreq>hourly</changefreq></url>\n  ${ENDPOINT_SPECS.map(s => `<url><loc>${baseUrl}${s.path}</loc><changefreq>hourly</changefreq></url>`).join("\n  ")}\n</urlset>`,
+    `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url><loc>${baseUrl}/</loc><changefreq>hourly</changefreq></url>\n  <url><loc>${baseUrl}/pricing</loc><changefreq>weekly</changefreq></url>\n  <url><loc>${baseUrl}/privacy</loc><changefreq>monthly</changefreq></url>\n  <url><loc>${baseUrl}/terms</loc><changefreq>monthly</changefreq></url>\n  <url><loc>${baseUrl}/llms.txt</loc><changefreq>hourly</changefreq></url>\n  <url><loc>${baseUrl}/.well-known/x402.json</loc><changefreq>hourly</changefreq></url>\n  ${ENDPOINT_SPECS.map(s => `<url><loc>${baseUrl}${s.path}</loc><changefreq>hourly</changefreq></url>`).join("\n  ")}\n</urlset>`,
     200,
     { "Content-Type": "application/xml" }
   );
 });
+
+// Bounty Challenge Redirect to Fleet Leader
+app.get("/bounty.html", (c) => c.redirect("https://canaryguard-402.onrender.com/bounty.html", 302));
+
+// Compliance, SEO & Metadata Routes
+const pricingHandler = (c: any) => c.json({
+  service: "rugshield-402",
+  pricing_model: "x402-pay-per-request",
+  accepted_currencies: ["USDC on Base (eip155:8453)", "USDC on Solana (solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp)"],
+  gasless_sponsorship: "100% sponsored ($0 ETH / $0 SOL required)",
+  tier_base: { price_per_request: "0.010 USDC", amount_micro: 10000, description: "Pre-Trade Honeypot Calldata Simulation & LP Lock Audit" },
+  tier_premium: { price_per_request: "0.020 USDC", amount_micro: 20000, description: "Sybil Cluster Map & Smart-Money Inflow Radar" },
+  challenge_bounty_url: "https://canaryguard-402.onrender.com/bounty.html",
+  docs: "https://rugshield-402.onrender.com/stats"
+});
+app.get("/pricing", pricingHandler);
+app.get("/plans", pricingHandler);
+
+const privacyHandler = (c: any) => c.json({
+  service: "rugshield-402",
+  privacy_summary: "Zero-retention deterministic security proxy. No private keys or proprietary trading queries stored on disk.",
+  data_handling: "Ephemeral, in-memory processing. calldata is evaluated statelessly in <1ms and discarded immediately.",
+  telemetry: "Only anonymous on-chain transaction hashes and token simulation latency metrics are logged for SLA verification.",
+  contact: "security@canaryguard.network"
+});
+app.get("/privacy", privacyHandler);
+app.get("/legal/privacy", privacyHandler);
+app.get("/privacy-policy", privacyHandler);
+
+const termsHandler = (c: any) => c.json({
+  service: "rugshield-402",
+  protocol: "x402 V2 HTTP Micropayment Protocol",
+  terms: [
+    "All API requests are settled on-chain via EIP-712 or SPL Token transfer authorization.",
+    "Settlements are instant, final, and non-refundable once verified by the facilitator.",
+    "Red-Team Challenge Bounty: Hosted at https://canaryguard-402.onrender.com/bounty.html"
+  ],
+  compliance: "Non-custodial cryptographic settlement infrastructure."
+});
+app.get("/terms", termsHandler);
+app.get("/legal/terms", termsHandler);
+app.get("/terms-of-service", termsHandler);
+
+const aboutHandler = (c: any) => c.json({
+  name: "RugShield 402",
+  mission: "Autonomous AI Agent Pre-Trade Honeypot Calldata Simulation & Liquidity Security Suite",
+  network: "Base Mainnet (8453) & Solana Mainnet",
+  facilitators: ["Coinbase CDP", "PayAI Network"],
+  bounty_challenge: "https://canaryguard-402.onrender.com/bounty.html",
+  docs: "https://rugshield-402.onrender.com/stats"
+});
+app.get("/about", aboutHandler);
+app.get("/about-us", aboutHandler);
+app.get("/team", aboutHandler);
+app.get("/leadership", aboutHandler);
+app.get("/company", aboutHandler);
+app.get("/contact", aboutHandler);
+app.get("/contact-us", aboutHandler);
+app.get("/press", aboutHandler);
 
 if (process.env.APIFY_IS_AT_HOME || process.env.APIFY_ACT_ID || process.env.APIFY_ACTOR_RUN_ID) {
   await import("./apify_entry.js");

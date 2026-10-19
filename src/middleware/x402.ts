@@ -375,6 +375,31 @@ export const x402Middleware = createMiddleware<{
   }
 });
 
+function buildInputSchema(example: Record<string, any>) {
+  const properties: Record<string, any> = {};
+  const required: string[] = [];
+  for (const [key, val] of Object.entries(example || {})) {
+    required.push(key);
+    if (typeof val === "string") {
+      properties[key] = { type: "string", description: key.replace(/_/g, " ") };
+    } else if (typeof val === "number") {
+      properties[key] = { type: Number.isInteger(val) ? "integer" : "number" };
+    } else if (typeof val === "boolean") {
+      properties[key] = { type: "boolean" };
+    } else if (Array.isArray(val)) {
+      properties[key] = { type: "array" };
+    } else {
+      properties[key] = { type: "object" };
+    }
+  }
+  return {
+    type: "object",
+    properties,
+    required: required.length > 0 ? required : undefined,
+    additionalProperties: true,
+  };
+}
+
 function buildBazaarExtension(spec: EndpointPriceSpec) {
   return {
     info: {
@@ -399,7 +424,7 @@ function buildBazaarExtension(spec: EndpointPriceSpec) {
             type: { type: "string", const: "http" },
             method: { type: "string", enum: ["POST", "GET"] },
             bodyType: { type: "string", enum: ["json"] },
-            body: { type: "object", properties: {} },
+            body: buildInputSchema(spec.exampleInput),
           },
           required: ["type", "method", "bodyType", "body"],
           additionalProperties: false,
