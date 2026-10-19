@@ -5,6 +5,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![Base Mainnet](https://img.shields.io/badge/Base-Mainnet_8453-0052FF.svg?logo=coinbase&logoColor=white)](https://basescan.org)
 [![x402 Protocol](https://img.shields.io/badge/Protocol-x402_v2-10b981.svg)](https://rugshield-402.onrender.com/.well-known/x402.json)
+[![Glama](https://glama.ai/mcp/servers/ak10082247-max/rugshield-402/badges/score.svg)](https://glama.ai/mcp/servers/ak10082247-max/rugshield-402)
 
 This repository contains the complete **open-source Model Context Protocol (MCP) server implementation** of **RugShield 402**. It equips LLMs, autonomous trading agents, and IDEs (Claude Desktop, Cursor, Windsurf) with tools to simulate token buys/sells, analyze honeypot traps, calculate exact transfer tax rates, and verify DEX liquidity depth on Base and EVM networks.
 
