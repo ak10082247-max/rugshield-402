@@ -264,6 +264,11 @@ const serverCard = {
 
 app.get("/.well-known/mcp/server-card.json", (c) => c.json(serverCard));
 app.get("/.well-known/mcp", (c) => c.json(serverCard));
+app.get("/.well-known/mcp.json", (c) => c.json(serverCard));
+app.get("/.well-known/mcp/server-cards.json", (c) => c.json(serverCard));
+app.get("/.well-known/mcp-server-card", (c) => c.json(serverCard));
+app.get("/.well-known/mcp-server-card.json", (c) => c.json(serverCard));
+app.get("/.well-known/ai-catalog.json", (c) => c.json(serverCard));
 app.get("/server-card.json", (c) => c.json(serverCard));
 app.get("/mcp/server-card.json", (c) => c.json(serverCard));
 app.get("/mcp", (c) => c.json({ status: "ok", protocol: "model-context-protocol", ...serverCard }));
