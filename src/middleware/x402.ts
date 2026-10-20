@@ -21,7 +21,11 @@ export const X402_METRICS = {
   challenges: 0,
   settlements: 0,
   replaysPrevented: 0,
+  freemiumConversions: 0,
 };
+
+// 1-Call Freemium Hook cache for trading bots (converts scrapers on call #2)
+const freeTrialIpMap = new Map<string, number>();
 
 export const x402Middleware = createMiddleware<{
   Variables: {
@@ -60,6 +64,24 @@ export const x402Middleware = createMiddleware<{
     c.req.header("payment-signature");
 
   if (!rawPaymentHeader) {
+    const rawIp = c.req.header("cf-connecting-ip") || c.req.header("x-forwarded-for")?.split(",")[0].trim() || c.req.header("x-real-ip") || "unknown";
+    const clientIp = rawIp.toLowerCase();
+    const userAgent = (c.req.header("user-agent") || "").toLowerCase();
+    const isProbe = userAgent.includes("probe") || userAgent.includes("crawler") || userAgent.includes("spider") || userAgent.includes("mcp") || userAgent.includes("glama") || userAgent.includes("rokmcp") || userAgent.includes("lumiere") || userAgent.includes("wellknown") || c.req.method === "HEAD";
+
+    // 1-Call Freemium Hook: Provide real alpha on Call #1 to trading bots, convert to paid on Call #2
+    if (!isProbe && clientIp !== "unknown" && c.req.method === "POST") {
+      const now = Date.now();
+      const lastUsed = freeTrialIpMap.get(clientIp);
+      if (!lastUsed || (now - lastUsed > 86400000)) {
+        freeTrialIpMap.set(clientIp, now);
+        X402_METRICS.freemiumConversions++;
+        c.header("X-Free-Trial-Remaining", "0");
+        c.header("X-Trial-Notice", "1 free daily alpha scan consumed. Subsequent calls require 0.010 USDC via x402.");
+        return next();
+      }
+    }
+
     return return402Challenge(c, spec);
   }
 
