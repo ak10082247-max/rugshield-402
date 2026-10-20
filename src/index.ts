@@ -262,6 +262,57 @@ const serverCard = {
   tools: MCP_TOOLS,
 };
 
+const agentRegistration = {
+  type: "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
+  name: "RugShield 402 — Autonomous Pre-Trade Honeypot & Alpha Sentinel",
+  description: "Enterprise-grade dual-chain (Base & Solana) pre-trade honeypot simulation, mempool front-running risk detection, sybil holder cluster mapping, and DEX smart-money oracle operating under x402 v2 micropayments.",
+  image: "https://rugshield-402.onrender.com/logo.png",
+  version: CONFIG.version,
+  url: "https://rugshield-402.onrender.com",
+  provider: {
+    name: "Kurox Real",
+    url: "https://rugshield-402.onrender.com",
+    wallet: CONFIG.merchantAddress,
+  },
+  active: true,
+  capabilities: {
+    streaming: true,
+    pushNotifications: false,
+  },
+  erc8004: {
+    identity_registry: "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432",
+    reputation_registry: "0x8004BAa17C55a88189AE136b182e5fdA19dE9b63",
+    agent_card: "https://rugshield-402.onrender.com/.well-known/agent-card.json",
+  },
+  securitySchemes: [
+    {
+      type: "x402",
+      description: "EIP-3009 TransferWithAuthorization on Base Mainnet (0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913) & SPL TransferChecked on Solana Mainnet (EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v).",
+    },
+  ],
+  services: [
+    {
+      name: "MCP",
+      endpoint: "https://rugshield-402.onrender.com/mcp",
+      version: "2024-11-05",
+    },
+    {
+      name: "HTTP",
+      endpoint: "https://rugshield-402.onrender.com",
+      version: "2.0",
+    },
+  ],
+  supportedChains: [
+    `eip155:${CONFIG.chainId}`,
+    CONFIG.solanaNetwork,
+  ],
+};
+
+app.get("/.well-known/agent-registration.json", (c) => c.json(agentRegistration));
+app.get("/.well-known/agent-card.json", (c) => c.json(agentRegistration));
+app.get("/.well-known/agent.json", (c) => c.json(agentRegistration));
+app.get("/.well-known/erc8004.json", (c) => c.json(agentRegistration));
+
 app.get("/.well-known/mcp/server-card.json", (c) => c.json(serverCard));
 app.get("/.well-known/mcp", (c) => c.json(serverCard));
 app.get("/.well-known/mcp.json", (c) => c.json(serverCard));
