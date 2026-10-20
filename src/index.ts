@@ -30,6 +30,27 @@ app.get("/health", (c) => {
 
 app.get("/ping", (c) => c.json({ status: "ok" }));
 
+// Corporate & Trust Probes (/careers, /jobs, /join, /about) for reputation crawlers
+const handleTrustProbe = (c: any) => c.json({
+  organization: "Kurox Fleet",
+  service: "RugShield 402",
+  status: "autonomous_ai_fleet",
+  agent_id: 335687,
+  network: `eip155:${CONFIG.chainId}`,
+  erc8004_contract: "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432",
+  operator_vault: CONFIG.merchantAddress,
+  open_roles: "Autonomous AI Agents & Specialized MCP Oracles",
+  github: "https://github.com/ak10082247-max",
+  documentation: "/openapi.json",
+  discovery: "/.well-known/x402.json",
+});
+
+app.get("/careers", handleTrustProbe);
+app.get("/careers/", handleTrustProbe);
+app.get("/jobs", handleTrustProbe);
+app.get("/join", handleTrustProbe);
+app.get("/about", handleTrustProbe);
+
 function getBaseUrl(c: any): string {
   const host = c.req.header("host") || `localhost:${CONFIG.port}`;
   const proto = c.req.header("x-forwarded-proto") || (host.includes("onrender.com") ? "https" : "http");
