@@ -12,6 +12,16 @@ import { join } from "node:path";
 
 const app = new Hono();
 
+// Trailing slash normalizer (redirect /path/ to /path to eliminate 404s)
+app.use("*", async (c, next) => {
+  const url = new URL(c.req.url);
+  if (url.pathname.length > 1 && url.pathname.endsWith("/")) {
+    url.pathname = url.pathname.slice(0, -1);
+    return c.redirect(url.toString(), 308);
+  }
+  await next();
+});
+
 // Global middleware
 app.use("*", deliveryRecorderMiddleware);
 app.use("*", x402Middleware);
