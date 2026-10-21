@@ -365,7 +365,9 @@ app.get("/.well-known/mcp-server-card", (c) => c.json(serverCard));
 app.get("/.well-known/mcp-server-card.json", (c) => c.json(serverCard));
 app.get("/.well-known/ai-catalog.json", (c) => c.json(serverCard));
 app.get("/server-card.json", (c) => c.json(serverCard));
+app.get("/mcp/server-card", (c) => c.json(serverCard));
 app.get("/mcp/server-card.json", (c) => c.json(serverCard));
+app.get("/.well-known/mcp/server-card", (c) => c.json(serverCard));
 app.get("/mcp", (c) => c.json({ status: "ok", protocol: "model-context-protocol", ...serverCard }));
 
 // MCP JSON-RPC 2.0 Handler (tools/list, initialize, ping, tools/call)
@@ -1173,6 +1175,46 @@ app.get("/about", aboutHandler);
 app.get("/about-us", aboutHandler);
 app.get("/team", aboutHandler);
 app.get("/leadership", aboutHandler);
+
+const faqHelpHandler = (c: any) => c.json({
+  service: "RugShield 402",
+  tagline: "Autonomous Pre-Trade Honeypot Calldata Simulation & Institutional Risk Audit Suite",
+  faq: [
+    {
+      question: "What is RugShield 402?",
+      answer: "RugShield provides pre-trade honeypot simulation, buy/sell transfer tax audit down to 0.01% fee, LP lock verification, and smart-money orderflow tracking on Base and Solana for AI agents and snipers."
+    },
+    {
+      question: "How do payments work?",
+      answer: "All endpoints are metered via HTTP 402 (x402 V2). Agents pay micropayments ($0.010 - $0.020 USDC) via EIP-712 on Base or SPL Token TransferChecked on Solana."
+    },
+    {
+      question: "Do I need ETH or SOL for gas?",
+      answer: "No. Settlements are 100% gasless ($0 ETH / $0 SOL required) through Coinbase CDP and PayAI facilitator sponsorship."
+    },
+    {
+      question: "Where can I find the API documentation and MCP manifest?",
+      answer: "OpenAPI specification is available at /openapi.json, x402 discovery at /.well-known/x402.json, and Model Context Protocol cards at /mcp and /mcp/server-card."
+    }
+  ],
+  resources: {
+    documentation: "/openapi.json",
+    discovery: "/.well-known/x402.json",
+    mcp_card: "/mcp/server-card",
+    web_terminal: "/",
+    telemetry: "/v1/telemetry/deliveries",
+  },
+  support: {
+    github: "https://github.com/ak10082247-max/rugshield-402"
+  }
+});
+
+app.get("/help", faqHelpHandler);
+app.get("/faq", faqHelpHandler);
+app.get("/faqs", faqHelpHandler);
+app.get("/support", faqHelpHandler);
+app.get("/guide", faqHelpHandler);
+app.get("/docs/faq", faqHelpHandler);
 app.get("/company", aboutHandler);
 app.get("/contact", aboutHandler);
 app.get("/contact-us", aboutHandler);
