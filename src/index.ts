@@ -377,6 +377,21 @@ app.get("/.well-known/glama.json", (c) => c.json({
   maintainers: ["ak10082247-max"],
   homepage: "https://rugshield-402.onrender.com"
 }));
+
+const oauthResourceMetadata = {
+  resource: "https://rugshield-402.onrender.com",
+  authorization_servers: [],
+  scopes_supported: ["mcp:read", "mcp:call"],
+  bearer_methods_supported: ["header"],
+  auth_schemes: ["x402-v2-eip712", "x402-v2-solana"],
+  payment_recipient: CONFIG.merchantAddress,
+  documentation: "https://rugshield-402.onrender.com/docs",
+  note: "Protected via on-chain x402 V2 gasless micropayments (EIP-712 / SPL TransferChecked)."
+};
+app.get("/.well-known/oauth-protected-resource", (c) => c.json(oauthResourceMetadata));
+app.get("/.well-known/oauth-protected-resource/mcp", (c) => c.json(oauthResourceMetadata));
+app.get("/.well-known/oauth-authorization-server", (c) => c.json(oauthResourceMetadata));
+app.get("/.well-known/openid-configuration", (c) => c.json(oauthResourceMetadata));
 app.get("/mcp/server-card", (c) => c.json(serverCard));
 app.get("/mcp/server-card.json", (c) => c.json(serverCard));
 app.get("/.well-known/mcp/server-card", (c) => c.json(serverCard));
@@ -420,6 +435,24 @@ app.post("/mcp", async (c) => {
             name: "rugshield-402",
             version: CONFIG.version,
           },
+        },
+      });
+    }
+
+    if (method === "server/discover" || method === "server/info") {
+      return c.json({
+        jsonrpc: "2.0",
+        id,
+        result: {
+          protocolVersion: "2024-11-05",
+          serverInfo: {
+            name: "rugshield-402",
+            version: CONFIG.version,
+          },
+          capabilities: {
+            tools: { listChanged: false },
+          },
+          tools: MCP_TOOLS,
         },
       });
     }
