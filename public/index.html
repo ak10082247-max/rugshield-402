@@ -558,7 +558,7 @@
       const el = document.getElementById("paymentStatus");
       if (el) {
         el.style.color = color;
-        el.innerText = msg;
+        el.innerHTML = msg;
       }
     }
 
@@ -634,7 +634,16 @@
     async function unlockWithBase() {
       const target = document.getElementById("targetInput").value.trim() || "0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b";
       if (!window.ethereum) {
-        setStatus("MetaMask or Coinbase Wallet not detected. Please open in an EVM Web3 browser.", "#ef4444");
+        const cbUrl = `https://go.cb-w.com/dapp?cb_url=${encodeURIComponent(window.location.href)}`;
+        const mmUrl = `https://metamask.app.link/dapp/${window.location.host}${window.location.pathname}${window.location.search}`;
+        setStatus(
+          `MetaMask or Coinbase Wallet not detected.<br>` +
+          `<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">` +
+          `<a href="${cbUrl}" target="_blank" style="padding:8px 14px;background:#0052ff;color:#fff;border-radius:6px;text-decoration:none;font-weight:700;font-size:12px;">📱 Open in Coinbase Wallet</a>` +
+          `<a href="${mmUrl}" target="_blank" style="padding:8px 14px;background:#f6851b;color:#fff;border-radius:6px;text-decoration:none;font-weight:700;font-size:12px;">🦊 Open in MetaMask</a>` +
+          `</div>`,
+          "#ef4444"
+        );
         return;
       }
       try {
@@ -771,7 +780,16 @@
       const target = document.getElementById("targetInput").value.trim() || "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263";
       const provider = (window.solana && window.solana.isPhantom) ? window.solana : (window.solflare || window.solana);
       if (!provider) {
-        setStatus("Phantom or Solflare wallet extension not detected. Install Phantom to pay on Solana.", "#ef4444");
+        const phantomUrl = `https://phantom.app/ul/browse/${encodeURIComponent(window.location.href)}?ref=${encodeURIComponent(window.location.origin)}`;
+        const solflareUrl = `https://solflare.com/ul/v1/browse/${encodeURIComponent(window.location.href)}`;
+        setStatus(
+          `Phantom or Solflare not detected.<br>` +
+          `<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">` +
+          `<a href="${phantomUrl}" target="_blank" style="padding:8px 14px;background:linear-gradient(90deg,#ab9ff2,#4e44ce);color:#fff;border-radius:6px;text-decoration:none;font-weight:700;font-size:12px;">👻 Open in Phantom Mobile</a>` +
+          `<a href="${solflareUrl}" target="_blank" style="padding:8px 14px;background:#fc5000;color:#fff;border-radius:6px;text-decoration:none;font-weight:700;font-size:12px;">☀️ Open in Solflare Mobile</a>` +
+          `</div>`,
+          "#ef4444"
+        );
         return;
       }
       try {

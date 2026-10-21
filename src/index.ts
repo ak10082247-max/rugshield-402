@@ -684,6 +684,10 @@ function getCachedScan(chain: string, token: string): any | null {
 }
 
 function setCachedScan(chain: string, token: string, data: any): void {
+  if (tokenScanCache.size >= 1000) {
+    const oldestKey = tokenScanCache.keys().next().value;
+    if (oldestKey) tokenScanCache.delete(oldestKey);
+  }
   const key = `${chain}:${token.toLowerCase()}`;
   tokenScanCache.set(key, { timestamp: Date.now(), data });
 }

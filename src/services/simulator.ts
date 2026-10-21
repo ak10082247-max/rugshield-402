@@ -68,6 +68,23 @@ const uniswapV2PairAbi = parseAbi([
   "function token1() external view returns (address)",
 ]);
 
+interface CachedScan {
+  timestamp: number;
+  response: ScanResponse;
+}
+
+const tokenScanCache = new Map<string, CachedScan>();
+const SCAN_CACHE_TTL_SECONDS = 120; // 120 seconds TTL for high-frequency callers
+const MAX_CACHE_SIZE = 1000; // Cap to 1000 entries to prevent memory exhaustion on 512MB RAM
+
+function storeInCache(key: string, now: number, response: ScanResponse): void {
+  if (tokenScanCache.size >= MAX_CACHE_SIZE) {
+    const oldestKey = tokenScanCache.keys().next().value;
+    if (oldestKey) tokenScanCache.delete(oldestKey);
+  }
+  tokenScanCache.set(key, { timestamp: now, response });
+}
+
 export async function scanToken(params: ScanRequest): Promise<ScanResponse> {
   const rawAddress = params.token_address?.trim();
   if (!rawAddress || !isAddress(rawAddress)) {
@@ -75,13 +92,23 @@ export async function scanToken(params: ScanRequest): Promise<ScanResponse> {
   }
 
   const tokenAddress = getAddress(rawAddress);
+  const cacheKey = `base:${tokenAddress.toLowerCase()}`;
   const now = Math.floor(Date.now() / 1000);
+
+  const cached = tokenScanCache.get(cacheKey);
+  if (cached && (now - cached.timestamp) < SCAN_CACHE_TTL_SECONDS) {
+    return {
+      ...cached.response,
+      timestamp: now,
+    };
+  }
+
   const riskFactors: string[] = [];
 
   // 1. Verify it is a deployed contract
   const bytecode = await publicClient.getBytecode({ address: tokenAddress });
   if (!bytecode || bytecode === "0x") {
-    return {
+    const noBytecodeResult: ScanResponse = {
       token: tokenAddress,
       symbol: "UNKNOWN",
       is_honeypot: true,
@@ -94,6 +121,8 @@ export async function scanToken(params: ScanRequest): Promise<ScanResponse> {
       attestation: `rugshield_verified_${CONFIG.chainId}_${now}`,
       timestamp: now,
     };
+    storeInCache(cacheKey, now, noBytecodeResult);
+    return noBytecodeResult;
   }
 
   // 2. Fetch ERC-20 metadata
@@ -408,7 +437,7 @@ export async function scanToken(params: ScanRequest): Promise<ScanResponse> {
     recommendation = "SAFE_TO_SWAP";
   }
 
-  return {
+  const result: ScanResponse = {
     token: tokenAddress,
     symbol,
     name,
@@ -431,4 +460,7 @@ export async function scanToken(params: ScanRequest): Promise<ScanResponse> {
     attestation: `rugshield_verified_${CONFIG.chainId}_${tokenAddress.slice(0, 8)}_${now}`,
     timestamp: now,
   };
+
+  storeInCache(cacheKey, now, result);
+  return result;
 }
