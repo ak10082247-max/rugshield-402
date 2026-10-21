@@ -365,6 +365,18 @@ app.get("/.well-known/mcp-server-card", (c) => c.json(serverCard));
 app.get("/.well-known/mcp-server-card.json", (c) => c.json(serverCard));
 app.get("/.well-known/ai-catalog.json", (c) => c.json(serverCard));
 app.get("/server-card.json", (c) => c.json(serverCard));
+app.get("/server.json", (c) => c.json(serverCard));
+app.get("/.well-known/server.json", (c) => c.json(serverCard));
+app.get("/glama.json", (c) => c.json({
+  $schema: "https://glama.ai/mcp/schemas/server.json",
+  maintainers: ["ak10082247-max"],
+  homepage: "https://rugshield-402.onrender.com"
+}));
+app.get("/.well-known/glama.json", (c) => c.json({
+  $schema: "https://glama.ai/mcp/schemas/server.json",
+  maintainers: ["ak10082247-max"],
+  homepage: "https://rugshield-402.onrender.com"
+}));
 app.get("/mcp/server-card", (c) => c.json(serverCard));
 app.get("/mcp/server-card.json", (c) => c.json(serverCard));
 app.get("/.well-known/mcp/server-card", (c) => c.json(serverCard));
