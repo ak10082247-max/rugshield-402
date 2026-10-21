@@ -272,6 +272,25 @@ const CANONICAL_FACEABOT_TOOLS = [
       },
       required: ["token_address"],
     },
+    outputSchema: {
+      type: "object",
+      required: ["total_liquidity_usd", "pools"],
+      properties: {
+        total_liquidity_usd: { type: "number", description: "Sum of verified pool reserves converted to USD" },
+        pools: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              dex: { type: "string" },
+              pool_address: { type: "string" },
+              liquidity_usd: { type: "number" },
+            },
+          },
+          description: "Breakdown of verified pools by DEX venue",
+        },
+      },
+    },
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -287,6 +306,16 @@ const CANONICAL_FACEABOT_TOOLS = [
         token_address: { type: "string", description: "Target ERC-20 contract address on Base (0x...) or Solana SPL Mint" },
       },
       required: ["token_address"],
+    },
+    outputSchema: {
+      type: "object",
+      required: ["is_honeypot", "can_sell"],
+      properties: {
+        is_honeypot: { type: "boolean", description: "Whether selling is prevented or taxes exceed 50%" },
+        can_sell: { type: "boolean", description: "Whether test sell order executed successfully" },
+        buy_tax_bps: { type: "integer", description: "Buy fee in basis points" },
+        sell_tax_bps: { type: "integer", description: "Sell fee in basis points" },
+      },
     },
     annotations: {
       readOnlyHint: true,
@@ -308,6 +337,32 @@ const BASE_MCP_TOOLS = ENDPOINT_SPECS.map(s => {
     props.amount_usd = { type: "number", description: "Swap size in USD (e.g. 1000, 10000, 50000)" };
   }
 
+  const outputSchema = toolName === "rugshield_pre_swap_scan" ? {
+    type: "object",
+    required: ["is_honeypot", "risk_score", "recommendation"],
+    properties: {
+      token: { type: "string", description: "Normalized token address" },
+      symbol: { type: "string", description: "Verified ticker symbol" },
+      is_honeypot: { type: "boolean", description: "Whether token prevents selling" },
+      buy_tax_bps: { type: "integer", description: "Buy tax in basis points" },
+      sell_tax_bps: { type: "integer", description: "Sell tax in basis points" },
+      liquidity_usd: { type: "number", description: "Verified USD liquidity" },
+      risk_score: { type: "number", description: "Composite risk score (0.0 safe to 1.0 extreme risk)" },
+      risk_factors: { type: "array", items: { type: "string" }, description: "Identified risk vectors" },
+      recommendation: { type: "string", enum: ["SAFE", "CAUTION", "DANGER_HONEYPOT"], description: "Execution verdict" },
+    },
+  } : {
+    type: "object",
+    required: ["status", "token_address", "verdict"],
+    properties: {
+      status: { type: "string", description: "Execution status" },
+      token_address: { type: "string", description: "Target token address" },
+      verdict: { type: "string", description: "Cryptographic assessment verdict" },
+      risk_score: { type: "number", description: "Risk severity score" },
+      data: { type: "object", description: "Detailed metric findings" },
+    },
+  };
+
   return {
     name: toolName,
     description: `${s.description} Cost: ${s.priceUsd} USDC on Base & Solana Mainnet.`,
@@ -316,6 +371,7 @@ const BASE_MCP_TOOLS = ENDPOINT_SPECS.map(s => {
       properties: props,
       required: ["token_address"],
     },
+    outputSchema,
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
