@@ -12,11 +12,17 @@ import { join } from "node:path";
 
 const app = new Hono();
 
-// Trailing slash normalizer (redirect /path/ to /path to eliminate 404s)
+// Path normalizer: strip trailing slashes, quotes, backslashes, brackets, and encoded noise
+// to eliminate 404s from terminal/Render log auto-linkers or JSON copy-pasting
 app.use("*", async (c, next) => {
   const url = new URL(c.req.url);
-  if (url.pathname.length > 1 && url.pathname.endsWith("/")) {
-    url.pathname = url.pathname.slice(0, -1);
+  let decodedPath = url.pathname;
+  try {
+    decodedPath = decodeURIComponent(url.pathname);
+  } catch {}
+  const cleanPath = decodedPath.replace(/[\/\\"'}\],;\s]+$/, "");
+  if (cleanPath !== url.pathname && cleanPath.length > 0) {
+    url.pathname = cleanPath;
     return c.redirect(url.toString(), 308);
   }
   await next();
