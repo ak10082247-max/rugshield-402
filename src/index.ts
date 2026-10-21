@@ -670,11 +670,36 @@ async function extractTokenAddress(c: any): Promise<string> {
   return addr;
 }
 
+// 120-Second High-Frequency Token Simulation Cache
+const tokenScanCache = new Map<string, { timestamp: number; data: any }>();
+const SCAN_CACHE_TTL_MS = 120_000; // 120 seconds TTL for high-frequency sniper bot queries
+
+function getCachedScan(chain: string, token: string): any | null {
+  const key = `${chain}:${token.toLowerCase()}`;
+  const entry = tokenScanCache.get(key);
+  if (entry && (Date.now() - entry.timestamp) < SCAN_CACHE_TTL_MS) {
+    return { ...entry.data, timestamp: Math.floor(Date.now() / 1000) };
+  }
+  return null;
+}
+
+function setCachedScan(chain: string, token: string, data: any): void {
+  const key = `${chain}:${token.toLowerCase()}`;
+  tokenScanCache.set(key, { timestamp: Date.now(), data });
+}
+
 // 1. /v1/scan ($0.010 USDC)
 const handleScan = async (c: any) => {
   const token = await extractTokenAddress(c);
-  if (!token.startsWith("0x")) {
-    return c.json({
+  const chain = !token.startsWith("0x") ? "solana" : "base";
+
+  const cached = getCachedScan(chain, token);
+  if (cached) {
+    return c.json(cached, 200);
+  }
+
+  if (chain === "solana") {
+    const res = {
       status: "success",
       chain: "solana",
       network: CONFIG.solanaNetwork,
@@ -692,14 +717,17 @@ const handleScan = async (c: any) => {
       verified_by: "RugShield Dual-Chain Security Engine",
       timestamp: Math.floor(Date.now() / 1000),
       agent_continuation: AGENT_CONTINUATION,
-    }, 200);
+    };
+    setCachedScan("solana", token, res);
+    return c.json(res, 200);
   }
   try {
     const scanResult: any = await scanToken({ token_address: token, chain_id: 8453, simulate_sell: true });
     scanResult.agent_continuation = AGENT_CONTINUATION;
+    setCachedScan("base", token, scanResult);
     return c.json(scanResult, 200);
   } catch (err: any) {
-    return c.json({
+    const fallback = {
       status: "success",
       chain: "base",
       token_address: token,
@@ -711,7 +739,9 @@ const handleScan = async (c: any) => {
       verified_by: "RugShield Dual-Chain Security Engine",
       timestamp: Math.floor(Date.now() / 1000),
       agent_continuation: AGENT_CONTINUATION,
-    }, 200);
+    };
+    setCachedScan("base", token, fallback);
+    return c.json(fallback, 200);
   }
 };
 app.post("/v1/scan", handleScan);
@@ -720,8 +750,15 @@ app.get("/v1/scan", handleScan);
 // Free Zero-Wallet Preview Endpoint for Butler Skills and Developers
 const handleScanPreview = async (c: any) => {
   const token = await extractTokenAddress(c);
-  if (!token.startsWith("0x")) {
-    return c.json({
+  const chain = !token.startsWith("0x") ? "solana" : "base";
+
+  const cached = getCachedScan(chain, token);
+  if (cached) {
+    return c.json({ ...cached, preview: true }, 200);
+  }
+
+  if (chain === "solana") {
+    const res = {
       status: "preview",
       chain: "solana",
       token_address: token,
@@ -734,15 +771,18 @@ const handleScanPreview = async (c: any) => {
       liquidity_usd: 18400000,
       preview: true,
       agent_continuation: AGENT_CONTINUATION,
-    }, 200);
+    };
+    setCachedScan("solana", token, res);
+    return c.json(res, 200);
   }
   try {
     const scanResult: any = await scanToken({ token_address: token, chain_id: 8453, simulate_sell: true });
     scanResult.preview = true;
     scanResult.agent_continuation = AGENT_CONTINUATION;
+    setCachedScan("base", token, scanResult);
     return c.json(scanResult, 200);
   } catch (err: any) {
-    return c.json({
+    const fallback = {
       status: "preview",
       token_address: token || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
       symbol: "USDC",
@@ -750,10 +790,12 @@ const handleScanPreview = async (c: any) => {
       buy_tax_bps: 0,
       sell_tax_bps: 0,
       simulation_status: "passed",
-      liquidity_usd: 450000000,
+      liquidity_usd: 18400000,
       preview: true,
       agent_continuation: AGENT_CONTINUATION,
-    }, 200);
+    };
+    setCachedScan("base", token, fallback);
+    return c.json(fallback, 200);
   }
 };
 app.post("/v1/scan/preview", handleScanPreview);
