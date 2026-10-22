@@ -1364,13 +1364,42 @@ app.get("/v1/stats", (c) => {
 
 app.get("/robots.txt", (c) => {
   const baseUrl = getBaseUrl(c);
-  return c.text(`User-agent: *\nAllow: /\n\nUser-agent: GPTBot\nAllow: /\n\nUser-agent: ClaudeBot\nAllow: /\n\nUser-agent: PerplexityBot\nAllow: /\n\nSitemap: ${baseUrl}/sitemap.xml\n`);
+  return c.text(`User-agent: *
+Allow: /
+
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+User-agent: Meta-ExternalAgent
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+Sitemap: ${baseUrl}/sitemap.xml
+LLMs-Txt: ${baseUrl}/llms.txt
+`);
 });
 
 app.get("/sitemap.xml", (c) => {
   const baseUrl = getBaseUrl(c);
   return c.body(
-    `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url><loc>${baseUrl}/</loc><changefreq>hourly</changefreq></url>\n  <url><loc>${baseUrl}/pricing</loc><changefreq>weekly</changefreq></url>\n  <url><loc>${baseUrl}/privacy</loc><changefreq>monthly</changefreq></url>\n  <url><loc>${baseUrl}/terms</loc><changefreq>monthly</changefreq></url>\n  <url><loc>${baseUrl}/llms.txt</loc><changefreq>hourly</changefreq></url>\n  <url><loc>${baseUrl}/.well-known/x402.json</loc><changefreq>hourly</changefreq></url>\n  ${ENDPOINT_SPECS.map(s => `<url><loc>${baseUrl}${s.path}</loc><changefreq>hourly</changefreq></url>`).join("\n  ")}\n</urlset>`,
+    `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url><loc>${baseUrl}/</loc><changefreq>hourly</changefreq><priority>1.0</priority></url>\n  <url><loc>${baseUrl}/llms.txt</loc><changefreq>daily</changefreq><priority>0.9</priority></url>\n  <url><loc>${baseUrl}/llms-full.txt</loc><changefreq>daily</changefreq><priority>0.9</priority></url>\n  <url><loc>${baseUrl}/openapi.json</loc><changefreq>daily</changefreq><priority>0.9</priority></url>\n  <url><loc>${baseUrl}/pricing</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>\n  <url><loc>${baseUrl}/privacy</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>\n  <url><loc>${baseUrl}/terms</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>\n  <url><loc>${baseUrl}/.well-known/x402.json</loc><changefreq>hourly</changefreq><priority>0.9</priority></url>\n  ${ENDPOINT_SPECS.map(s => `<url><loc>${baseUrl}${s.path}</loc><changefreq>hourly</changefreq><priority>0.8</priority></url>`).join("\n  ")}\n</urlset>`,
     200,
     { "Content-Type": "application/xml" }
   );
