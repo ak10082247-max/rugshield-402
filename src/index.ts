@@ -1362,6 +1362,9 @@ app.get("/v1/stats", (c) => {
   });
 });
 
+// IndexNow ownership verification key (must be served at the domain root)
+app.get("/kurox402indexnowkey20261022abc.txt", (c) => c.text("kurox402indexnowkey20261022abc"));
+
 app.get("/robots.txt", (c) => {
   const baseUrl = getBaseUrl(c);
   return c.text(`User-agent: *
