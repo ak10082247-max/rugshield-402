@@ -748,10 +748,137 @@ function setCachedScan(chain: string, token: string, data: any): void {
   tokenScanCache.set(key, { timestamp: Date.now(), data });
 }
 
+async function scanSolanaToken(token: string) {
+  try {
+    const rpcRes = await fetch("https://api.mainnet-beta.solana.com", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "scan",
+        method: "getAccountInfo",
+        params: [token, { encoding: "jsonParsed" }],
+      }),
+      signal: AbortSignal.timeout(8000),
+    });
+
+    const rpcData: any = await rpcRes.json();
+    const accountVal = rpcData?.result?.value;
+
+    if (!accountVal) {
+      return {
+        status: "error",
+        chain: "solana",
+        network: CONFIG.solanaNetwork,
+        token_address: token,
+        is_honeypot: null,
+        error: "Solana account not found on mainnet",
+        simulation_status: "failed",
+        verdict: "MINT_NOT_FOUND",
+        timestamp: Math.floor(Date.now() / 1000),
+        agent_continuation: AGENT_CONTINUATION,
+      };
+    }
+
+    const parsed = accountVal.data?.parsed;
+    if (parsed?.type !== "mint") {
+      return {
+        status: "error",
+        chain: "solana",
+        network: CONFIG.solanaNetwork,
+        token_address: token,
+        is_honeypot: null,
+        error: "Target address is not an SPL token mint",
+        simulation_status: "failed",
+        verdict: "NOT_A_TOKEN_MINT",
+        timestamp: Math.floor(Date.now() / 1000),
+        agent_continuation: AGENT_CONTINUATION,
+      };
+    }
+
+    const info = parsed.info || {};
+    const mintAuthRevoked = info.mintAuthority === null;
+    const freezeAuthRevoked = info.freezeAuthority === null;
+    const decimals = info.decimals ?? 0;
+    const supply = info.supply || "0";
+
+    // Query DexScreener for liquidity
+    let liquidityUsd = 0;
+    let poolFound = false;
+    try {
+      const dexRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${token}`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      const dexData: any = await dexRes.json();
+      if (dexData.pairs && dexData.pairs.length > 0) {
+        poolFound = true;
+        liquidityUsd = dexData.pairs.reduce((sum: number, p: any) => sum + (p.liquidity?.usd || 0), 0);
+      }
+    } catch {}
+
+    const verdict = !freezeAuthRevoked
+      ? "CAUTION_FREEZE_AUTHORITY_ACTIVE"
+      : !mintAuthRevoked
+      ? "CAUTION_MINT_AUTHORITY_ACTIVE"
+      : liquidityUsd < 500 && !poolFound
+      ? "HIGH_RISK_LOW_LIQUIDITY"
+      : "SAFE_SOLANA_SPL";
+
+    return {
+      status: "success",
+      chain: "solana",
+      network: CONFIG.solanaNetwork,
+      token_address: token,
+      is_honeypot: !freezeAuthRevoked,
+      mint_authority_revoked: mintAuthRevoked,
+      freeze_authority_revoked: freezeAuthRevoked,
+      buy_tax_bps: 0,
+      sell_tax_bps: 0,
+      decimals,
+      supply,
+      liquidity_usd: Math.round(liquidityUsd),
+      simulation_status: "passed",
+      verdict,
+      verified_by: "RugShield Dual-Chain Security Engine",
+      timestamp: Math.floor(Date.now() / 1000),
+      agent_continuation: AGENT_CONTINUATION,
+    };
+  } catch (err: any) {
+    return {
+      status: "error",
+      chain: "solana",
+      network: CONFIG.solanaNetwork,
+      token_address: token,
+      is_honeypot: null,
+      error: `Solana scan error: ${err.message}`,
+      simulation_status: "inconclusive",
+      verdict: "RPC_QUERY_FAILED",
+      timestamp: Math.floor(Date.now() / 1000),
+      agent_continuation: AGENT_CONTINUATION,
+    };
+  }
+}
+
 // 1. /v1/scan ($0.010 USDC)
 const handleScan = async (c: any) => {
   const token = await extractTokenAddress(c);
-  const chain = !token.startsWith("0x") ? "solana" : "base";
+  const isEvm = token.startsWith("0x") && token.length === 42 && /^0x[a-fA-F0-9]{40}$/.test(token);
+  const isSolana = !token.startsWith("0x") && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(token);
+
+  if (!isEvm && !isSolana) {
+    return c.json({
+      status: "error",
+      token_address: token,
+      error: "Invalid token address format. Must be a 42-char 0x EVM address or 32-44 char Solana base58 mint.",
+      is_honeypot: null,
+      simulation_status: "failed",
+      verdict: "INVALID_TOKEN_ADDRESS",
+      timestamp: Math.floor(Date.now() / 1000),
+      agent_continuation: AGENT_CONTINUATION,
+    }, 400);
+  }
+
+  const chain = isSolana ? "solana" : "base";
 
   const cached = getCachedScan(chain, token);
   if (cached) {
@@ -759,49 +886,30 @@ const handleScan = async (c: any) => {
   }
 
   if (chain === "solana") {
-    const res = {
-      status: "success",
-      chain: "solana",
-      network: CONFIG.solanaNetwork,
-      token_address: token,
-      is_honeypot: false,
-      mint_authority_revoked: true,
-      freeze_authority_revoked: true,
-      buy_tax_bps: 0,
-      sell_tax_bps: 0,
-      lp_burned_or_locked_pct: 100.0,
-      top_10_holders_pct: 14.2,
-      insider_clusters_detected: 0,
-      simulation_status: "passed",
-      verdict: "SAFE_SOLANA_SPL",
-      verified_by: "RugShield Dual-Chain Security Engine",
-      timestamp: Math.floor(Date.now() / 1000),
-      agent_continuation: AGENT_CONTINUATION,
-    };
-    setCachedScan("solana", token, res);
-    return c.json(res, 200);
+    const solanaScan = await scanSolanaToken(token);
+    if (solanaScan.status === "success") {
+      setCachedScan("solana", token, solanaScan);
+    }
+    return c.json(solanaScan, solanaScan.status === "success" ? 200 : 400);
   }
+
   try {
     const scanResult: any = await scanToken({ token_address: token, chain_id: 8453, simulate_sell: true });
     scanResult.agent_continuation = AGENT_CONTINUATION;
     setCachedScan("base", token, scanResult);
     return c.json(scanResult, 200);
   } catch (err: any) {
-    const fallback = {
-      status: "success",
+    return c.json({
+      status: "error",
       chain: "base",
       token_address: token,
-      is_honeypot: false,
-      buy_tax_bps: 0,
-      sell_tax_bps: 0,
-      simulation_status: "passed",
-      verdict: "SAFE_EVM_ERC20",
-      verified_by: "RugShield Dual-Chain Security Engine",
+      is_honeypot: null,
+      error: err.message || "Failed to scan token on Base",
+      simulation_status: "failed",
+      verdict: "SCAN_FAILED_OR_INVALID_TOKEN",
       timestamp: Math.floor(Date.now() / 1000),
       agent_continuation: AGENT_CONTINUATION,
-    };
-    setCachedScan("base", token, fallback);
-    return c.json(fallback, 200);
+    }, 400);
   }
 };
 app.post("/v1/scan", handleScan);
@@ -810,7 +918,24 @@ app.get("/v1/scan", handleScan);
 // Free Zero-Wallet Preview Endpoint for Butler Skills and Developers
 const handleScanPreview = async (c: any) => {
   const token = await extractTokenAddress(c);
-  const chain = !token.startsWith("0x") ? "solana" : "base";
+  const isEvm = token.startsWith("0x") && token.length === 42 && /^0x[a-fA-F0-9]{40}$/.test(token);
+  const isSolana = !token.startsWith("0x") && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(token);
+
+  if (!isEvm && !isSolana) {
+    return c.json({
+      status: "error",
+      preview: true,
+      token_address: token,
+      error: "Invalid token address format. Must be a 42-char 0x EVM address or 32-44 char Solana base58 mint.",
+      is_honeypot: null,
+      simulation_status: "failed",
+      verdict: "INVALID_TOKEN_ADDRESS",
+      timestamp: Math.floor(Date.now() / 1000),
+      agent_continuation: AGENT_CONTINUATION,
+    }, 400);
+  }
+
+  const chain = isSolana ? "solana" : "base";
 
   const cached = getCachedScan(chain, token);
   if (cached) {
@@ -818,23 +943,10 @@ const handleScanPreview = async (c: any) => {
   }
 
   if (chain === "solana") {
-    const res = {
-      status: "preview",
-      chain: "solana",
-      token_address: token,
-      is_honeypot: false,
-      mint_authority_revoked: true,
-      freeze_authority_revoked: true,
-      buy_tax_bps: 0,
-      sell_tax_bps: 0,
-      simulation_status: "passed",
-      liquidity_usd: 18400000,
-      preview: true,
-      agent_continuation: AGENT_CONTINUATION,
-    };
-    setCachedScan("solana", token, res);
-    return c.json(res, 200);
+    const solanaScan = await scanSolanaToken(token);
+    return c.json({ ...solanaScan, preview: true }, solanaScan.status === "success" ? 200 : 400);
   }
+
   try {
     const scanResult: any = await scanToken({ token_address: token, chain_id: 8453, simulate_sell: true });
     scanResult.preview = true;
@@ -842,20 +954,18 @@ const handleScanPreview = async (c: any) => {
     setCachedScan("base", token, scanResult);
     return c.json(scanResult, 200);
   } catch (err: any) {
-    const fallback = {
-      status: "preview",
-      token_address: token || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-      symbol: "USDC",
-      is_honeypot: false,
-      buy_tax_bps: 0,
-      sell_tax_bps: 0,
-      simulation_status: "passed",
-      liquidity_usd: 18400000,
+    return c.json({
+      status: "error",
       preview: true,
+      chain: "base",
+      token_address: token,
+      is_honeypot: null,
+      error: err.message || "Failed to scan token on Base",
+      simulation_status: "failed",
+      verdict: "SCAN_FAILED_OR_INVALID_TOKEN",
+      timestamp: Math.floor(Date.now() / 1000),
       agent_continuation: AGENT_CONTINUATION,
-    };
-    setCachedScan("base", token, fallback);
-    return c.json(fallback, 200);
+    }, 400);
   }
 };
 app.post("/v1/scan/preview", handleScanPreview);
