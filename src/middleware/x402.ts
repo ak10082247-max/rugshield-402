@@ -97,6 +97,31 @@ export const x402Middleware = createMiddleware<{
 
     const parsed = JSON.parse(payloadStr);
 
+    // PRE-SETTLEMENT PARAMETER VALIDATION (Prevents charging payment on invalid requests)
+    let reqToken = c.req.query("token_address") || c.req.query("address") || c.req.query("token") || c.req.query("target");
+    if (!reqToken && (c.req.method === "POST" || c.req.method === "PUT")) {
+      try {
+        const clonedBody = await c.req.raw.clone().json().catch(() => null);
+        if (clonedBody) {
+          reqToken = clonedBody.token_address || clonedBody.address || clonedBody.token || clonedBody.target;
+        }
+      } catch {}
+    }
+
+    if (reqToken && typeof reqToken === "string") {
+      const cleanToken = reqToken.trim();
+      const isEvmToken = cleanToken.startsWith("0x") && cleanToken.length === 42 && /^0x[a-fA-F0-9]{40}$/.test(cleanToken);
+      const isSolanaToken = !cleanToken.startsWith("0x") && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(cleanToken);
+      if (!isEvmToken && !isSolanaToken) {
+        return c.json({
+          status: "error",
+          error: "INVALID_TOKEN_ADDRESS",
+          message: `Invalid token address '${cleanToken}'. Must be a 42-char EVM address or valid Solana base58 mint.`,
+          timestamp: Math.floor(Date.now() / 1000)
+        }, 400);
+      }
+    }
+
     // Branch 1: Solana Mainnet x402 Payment Settlement via PayAI Facilitator
     const incomingNetwork = (parsed.accepted?.network || parsed.network || "").toString();
     if (incomingNetwork.startsWith("solana") || parsed.payload?.transaction) {

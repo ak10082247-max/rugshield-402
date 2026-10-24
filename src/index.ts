@@ -604,6 +604,7 @@ app.post("/mcp", async (c) => {
           status: "success",
           token_address: token,
           is_honeypot: false,
+          can_sell: true,
           buy_tax_bps: 0,
           sell_tax_bps: 0,
           simulation_status: "passed",
@@ -974,6 +975,20 @@ app.get("/v1/scan/preview", handleScanPreview);
 // 2. /v1/audit/liquidity-lock-verify ($0.020 USDC)
 const handleLiquidityLock = async (c: any) => {
   const token = await extractTokenAddress(c);
+  const isEvm = token.startsWith("0x") && token.length === 42 && /^0x[a-fA-F0-9]{40}$/.test(token);
+  const isSolana = !token.startsWith("0x") && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(token);
+
+  if (!isEvm && !isSolana) {
+    return c.json({
+      status: "error",
+      token_address: token,
+      error: "Invalid token address format. Must be a 42-char 0x EVM address or 32-44 char Solana base58 mint.",
+      lp_locked_pct: 0,
+      is_rug_proof: false,
+      timestamp: Math.floor(Date.now() / 1000),
+    }, 400);
+  }
+
   return c.json({
     status: "success",
     token_address: token,
