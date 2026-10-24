@@ -98,25 +98,108 @@ export const x402Middleware = createMiddleware<{
     const parsed = JSON.parse(payloadStr);
 
     // PRE-SETTLEMENT PARAMETER VALIDATION (Prevents charging payment on invalid requests)
-    let reqToken = c.req.query("token_address") || c.req.query("address") || c.req.query("token") || c.req.query("target");
-    if (!reqToken && (c.req.method === "POST" || c.req.method === "PUT")) {
+    // Body-first extraction to match route handler precedence (prevents valid query bypassing invalid body)
+    let hasBodyTarget = false;
+    let reqToken: any = null;
+    let reqChain: any = null;
+    if (c.req.method === "POST" || c.req.method === "PUT") {
       try {
         const clonedBody = await c.req.raw.clone().json().catch(() => null);
-        if (clonedBody) {
-          reqToken = clonedBody.token_address || clonedBody.address || clonedBody.token || clonedBody.target;
+        if (clonedBody && typeof clonedBody === "object") {
+          for (const k of ["token_address", "address", "token", "target"]) {
+            if (k in clonedBody) {
+              reqToken = clonedBody[k];
+              hasBodyTarget = true;
+              break;
+            }
+          }
+          if ("chain" in clonedBody) {
+            reqChain = clonedBody.chain;
+          }
         }
       } catch {}
     }
+    if (!hasBodyTarget) {
+      for (const k of ["token_address", "address", "token", "target"]) {
+        const qVal = c.req.query(k);
+        if (qVal !== undefined && qVal !== null) {
+          reqToken = qVal;
+          break;
+        }
+      }
+    }
+    if (!reqChain) {
+      reqChain = c.req.query("chain");
+    }
 
-    if (reqToken && typeof reqToken === "string") {
-      const cleanToken = reqToken.trim();
-      const isEvmToken = cleanToken.startsWith("0x") && cleanToken.length === 42 && /^0x[a-fA-F0-9]{40}$/.test(cleanToken);
-      const isSolanaToken = !cleanToken.startsWith("0x") && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(cleanToken);
-      if (!isEvmToken && !isSolanaToken) {
+    if (reqToken === null || reqToken === undefined) {
+      return c.json({
+        status: "error",
+        error: "MISSING_TARGET_ADDRESS",
+        message: "Missing required token address parameter in body or query.",
+        timestamp: Math.floor(Date.now() / 1000)
+      }, 400);
+    }
+
+    if (typeof reqToken !== "string") {
+      return c.json({
+        status: "error",
+        error: "INVALID_TOKEN_ADDRESS",
+        message: "Token address parameter must be a string.",
+        timestamp: Math.floor(Date.now() / 1000)
+      }, 400);
+    }
+
+    function checkSolanaBase58Mint32(str: string): boolean {
+      if (typeof str !== "string" || str.length < 32 || str.length > 44) return false;
+      const ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+      let zeros = 0;
+      while (zeros < str.length && str[zeros] === "1") zeros++;
+      const bytes: number[] = [];
+      for (let i = zeros; i < str.length; i++) {
+        const idx = ALPHABET.indexOf(str[i]);
+        if (idx === -1) return false;
+        let carry = idx;
+        for (let j = 0; j < bytes.length; j++) {
+          carry += bytes[j] * 58;
+          bytes[j] = carry & 0xff;
+          carry >>= 8;
+        }
+        while (carry > 0) {
+          bytes.push(carry & 0xff);
+          carry >>= 8;
+        }
+      }
+      return (zeros + bytes.length) === 32;
+    }
+
+    const cleanToken = reqToken.trim();
+    const isEvmToken = cleanToken.startsWith("0x") && cleanToken.length === 42 && /^0x[a-fA-F0-9]{40}$/.test(cleanToken);
+    const isSolanaToken = !cleanToken.startsWith("0x") && checkSolanaBase58Mint32(cleanToken);
+    if (!isEvmToken && !isSolanaToken) {
+      return c.json({
+        status: "error",
+        error: "INVALID_TOKEN_ADDRESS",
+        message: `Invalid token address '${cleanToken}'. Must be a 42-char EVM address or 32-byte Solana base58 mint.`,
+        timestamp: Math.floor(Date.now() / 1000)
+      }, 400);
+    }
+
+    if (reqChain !== null && reqChain !== undefined) {
+      const chainStr = String(reqChain).toLowerCase().trim();
+      if ((chainStr === "solana" || chainStr.includes("solana") || chainStr.includes("5eykt")) && !isSolanaToken) {
         return c.json({
           status: "error",
-          error: "INVALID_TOKEN_ADDRESS",
-          message: `Invalid token address '${cleanToken}'. Must be a 42-char EVM address or valid Solana base58 mint.`,
+          error: "CHAIN_MISMATCH",
+          message: "Target token address is an EVM address but requested chain is 'solana'.",
+          timestamp: Math.floor(Date.now() / 1000)
+        }, 400);
+      }
+      if ((chainStr === "base" || chainStr === "ethereum" || chainStr === "evm" || chainStr.includes("8453") || chainStr.includes("eip155")) && !isEvmToken) {
+        return c.json({
+          status: "error",
+          error: "CHAIN_MISMATCH",
+          message: "Target token address is a Solana mint but requested chain is EVM/Base.",
           timestamp: Math.floor(Date.now() / 1000)
         }, 400);
       }
