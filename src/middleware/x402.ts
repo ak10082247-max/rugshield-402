@@ -187,7 +187,19 @@ export const x402Middleware = createMiddleware<{
 
     if (reqChain !== null && reqChain !== undefined) {
       const chainStr = String(reqChain).toLowerCase().trim();
-      if ((chainStr === "solana" || chainStr.includes("solana") || chainStr.includes("5eykt")) && !isSolanaToken) {
+      const isSupportedBase = chainStr === "base" || chainStr === "eip155:8453" || chainStr === "8453";
+      const isSupportedSolana = chainStr === "solana" || chainStr === "solana:5eykt4usfv8p8njdtrepy1vzqkqzkvdp" || chainStr === "5eykt4usfv8p8njdtrepy1vzqkqzkvdp";
+
+      if (!isSupportedBase && !isSupportedSolana) {
+        return c.json({
+          status: "error",
+          error: "UNSUPPORTED_CHAIN",
+          message: `Requested chain '${chainStr}' is not supported. Supported chains: Base ('eip155:8453', 'base') and Solana ('solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp', 'solana').`,
+          timestamp: Math.floor(Date.now() / 1000)
+        }, 400);
+      }
+
+      if (isSupportedSolana && !isSolanaToken) {
         return c.json({
           status: "error",
           error: "CHAIN_MISMATCH",
@@ -195,7 +207,8 @@ export const x402Middleware = createMiddleware<{
           timestamp: Math.floor(Date.now() / 1000)
         }, 400);
       }
-      if ((chainStr === "base" || chainStr === "ethereum" || chainStr === "evm" || chainStr.includes("8453") || chainStr.includes("eip155")) && !isEvmToken) {
+
+      if (isSupportedBase && !isEvmToken) {
         return c.json({
           status: "error",
           error: "CHAIN_MISMATCH",
