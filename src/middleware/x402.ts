@@ -755,7 +755,7 @@ function return402Challenge(c: any, spec: EndpointPriceSpec, reason?: string) {
   const invoiceBase64 = Buffer.from(JSON.stringify(x402Pr)).toString("base64");
   c.header("PAYMENT-REQUIRED", invoiceBase64);
   c.header("X-Payment-Required", invoiceBase64);
-  c.header("X-402-Payment-Required", invoiceBase64);
+
   c.header("X-402-Amount", spec.priceUsd);
   c.header("X-402-Amount-Units", spec.amountMicroUnits);
   c.header("X-402-Payment-To", CONFIG.merchantAddress);
