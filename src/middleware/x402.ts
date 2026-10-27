@@ -3,6 +3,8 @@ import { LRUCache } from "lru-cache";
 import { createHash, randomUUID } from "node:crypto";
 import { verifyTypedData, getAddress, isAddress } from "viem";
 import { CONFIG, ENDPOINT_MAP, ENDPOINT_SPECS, type EndpointPriceSpec } from "../config.js";
+import { fulfillmentStore, FulfillmentStorageError, paymentId, requestFingerprint, snapshotResponse, restoreResponse } from "./fulfillment.js";
+import { authenticateSolanaTransaction } from "./solana_authorization.js";
 
 // Replay protection cache: max 100,000 items, TTL 24 hours (86,400,000 ms)
 const replayCache = new LRUCache<string, boolean>({
@@ -27,7 +29,7 @@ export const X402_METRICS = {
 // 1-Call Freemium Hook cache for trading bots (converts scrapers on call #2)
 const freeTrialIpMap = new Map<string, number>();
 
-export const x402Middleware = createMiddleware<{
+const paymentHandler = createMiddleware<{
   Variables: {
     payment?: X402VerificationResult;
   };
@@ -70,7 +72,7 @@ export const x402Middleware = createMiddleware<{
     const isProbe = userAgent.includes("probe") || userAgent.includes("crawler") || userAgent.includes("spider") || userAgent.includes("mcp") || userAgent.includes("glama") || userAgent.includes("rokmcp") || userAgent.includes("lumiere") || userAgent.includes("wellknown") || c.req.method === "HEAD";
 
     // 1-Call Freemium Hook: Provide real alpha on Call #1 to trading bots, convert to paid on Call #2
-    if (!isProbe && clientIp !== "unknown" && c.req.method === "POST") {
+    if (process.env.X402_FREE_TRIAL_ENABLED === "1" && !isProbe && clientIp !== "unknown" && c.req.method === "POST") {
       const now = Date.now();
       const lastUsed = freeTrialIpMap.get(clientIp);
       if (!lastUsed || (now - lastUsed > 86400000)) {
@@ -78,6 +80,7 @@ export const x402Middleware = createMiddleware<{
         X402_METRICS.freemiumConversions++;
         c.header("X-Free-Trial-Remaining", "0");
         c.header("X-Trial-Notice", "1 free daily alpha scan consumed. Subsequent calls require 0.010 USDC via x402.");
+        c.header("PAYMENT-RESPONSE", Buffer.from(JSON.stringify({ success: true, amount: "0", transaction: "freemium-trial-1-of-1", network: `eip155:${CONFIG.chainId}`, resource: spec.path })).toString("base64"));
         return next();
       }
     }
@@ -96,6 +99,38 @@ export const x402Middleware = createMiddleware<{
     }
 
     const parsed = JSON.parse(payloadStr);
+    const fingerprint = await requestFingerprint(c);
+    const resourceHost = c.req.header("host") || `localhost:${CONFIG.port}`;
+    const resourceProto = c.req.header("x-forwarded-proto") || (resourceHost.includes("onrender.com") ? "https" : "http");
+    const canonicalResource = `${resourceHost.includes("onrender.com") ? "https://rugshield-402.onrender.com" : `${resourceProto}://${resourceHost}`}${spec.path}`;
+    const validateMetadata = (requirements: any) => {
+      const accepted = parsed.accepted;
+      if (accepted !== undefined) {
+        if (!accepted || typeof accepted !== "object" || Array.isArray(accepted)) throw new Error("Invalid accepted payment requirements");
+        for (const name of ["scheme", "network", "amount", "asset", "payTo"]) {
+          if (accepted[name] !== undefined && accepted[name] !== requirements[name]) throw new Error(`Payment ${name} does not match the requested resource`);
+        }
+      }
+      const resource = typeof parsed.resource === "string" ? parsed.resource : parsed.resource?.url;
+      if (resource !== undefined && resource !== canonicalResource) throw new Error("Payment resource URL mismatch");
+    };
+    const recover = (id: string) => {
+      const stored = fulfillmentStore.get(id);
+      if (!stored) return null;
+      if (stored.fingerprint !== fingerprint) return c.json({ error: "PAYMENT_REQUEST_MISMATCH", message: "This payment is bound to a different request; no new charge attempted." }, 409);
+      if (stored.state === "settled") return restoreResponse(stored);
+      return c.json({ error: "SETTLEMENT_PENDING_RECONCILIATION", message: "This payment may already have settled. Do not replace it or pay again; the prepared result is retained for reconciliation." }, 503);
+    };
+    const prepare = async (id: string) => {
+      await next();
+      if (c.res.status < 200 || c.res.status >= 300) return c.res;
+      const snapshot = await snapshotResponse(c.res);
+      const body = JSON.parse(snapshot.body);
+      if (body.status === "error" || body.error) return c.json({ error: "FULFILLMENT_FAILED", message: "Analysis did not complete; no settlement attempted." }, 503);
+      if (body.fulfillment_complete === false) return c.json({ ...body, status: "error", error: "ANALYSIS_INCOMPLETE", payment_collected: false }, 503);
+      if (!fulfillmentStore.reserve(id, fingerprint, snapshot)) return recover(id);
+      return null;
+    };
 
     // PRE-SETTLEMENT PARAMETER VALIDATION (Prevents charging payment on invalid requests)
     // Body-first extraction to match route handler precedence (prevents valid query bypassing invalid body)
@@ -115,6 +150,8 @@ export const x402Middleware = createMiddleware<{
           }
           if ("chain" in clonedBody) {
             reqChain = clonedBody.chain;
+          } else if ("chain_id" in clonedBody) {
+            reqChain = clonedBody.chain_id;
           }
         }
       } catch {}
@@ -129,7 +166,7 @@ export const x402Middleware = createMiddleware<{
       }
     }
     if (!reqChain) {
-      reqChain = c.req.query("chain");
+      reqChain = c.req.query("chain") ?? c.req.query("chain_id");
     }
 
     if (reqToken === null || reqToken === undefined) {
@@ -225,11 +262,8 @@ export const x402Middleware = createMiddleware<{
       if (!txB64) {
         return return402Challenge(c, spec, "Missing Solana serialized transaction in payload.transaction");
       }
-      const solSigHash = createHash("sha256").update(txB64).digest("hex");
-      if (replayCache.has(solSigHash)) {
-        X402_METRICS.replaysPrevented++;
-        return c.json({ error: "replay_detected", message: "Solana payment transaction already consumed." }, 409);
-      }
+      const solanaAuthorization = authenticateSolanaTransaction(txB64);
+      const solSigHash = solanaAuthorization.id;
 
       const host = c.req.header("host") || `localhost:${CONFIG.port}`;
       const proto = c.req.header("x-forwarded-proto") || (host.includes("onrender.com") ? "https" : "http");
@@ -249,6 +283,13 @@ export const x402Middleware = createMiddleware<{
           feePayer: CONFIG.solanaFeePayer,
         },
       };
+      validateMetadata(solanaRequirements);
+      const recovered = recover(solSigHash);
+      if (recovered) return recovered;
+      if (replayCache.has(solSigHash)) {
+        X402_METRICS.replaysPrevented++;
+        return c.json({ error: "replay_detected", message: "Solana payment transaction already consumed." }, 409);
+      }
 
       const resourceObj = {
         url: resUrl,
@@ -263,10 +304,21 @@ export const x402Middleware = createMiddleware<{
           resource: resourceObj,
           extensions: parsed.extensions || { bazaar: buildBazaarExtension(spec) },
           accepted: solanaRequirements,
-          payload: parsed.payload || { transaction: txB64 },
+          payload: { ...parsed.payload, transaction: solanaAuthorization.canonicalTransaction },
         },
         paymentRequirements: solanaRequirements,
       };
+
+      // PayAI's read-only verification rejects invalid signatures/transactions before expensive analysis.
+      try {
+        const verified = await fetch(`${CONFIG.payaiFacilitator}/verify`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payaiBody), signal: AbortSignal.timeout(15000) });
+        const verification: any = await verified.json();
+        if (!verified.ok || verification.isValid !== true) return return402Challenge(c, spec, "Solana authorization verification failed; no settlement attempted");
+      } catch { return c.json({ error: "PAYMENT_VERIFICATION_UNAVAILABLE", message: "Read-only facilitator verification unavailable. No settlement attempted." }, 503); }
+
+      // Acquire and durably retain the exact response before any irreversible transfer.
+      const preparationError = await prepare(solSigHash);
+      if (preparationError) return preparationError;
 
       try {
         const settleRes = await fetch(`${CONFIG.payaiFacilitator}/settle`, {
@@ -276,25 +328,26 @@ export const x402Middleware = createMiddleware<{
           signal: AbortSignal.timeout(30000),
         });
         const settleData: any = await settleRes.json().catch(() => ({}));
-        if (!settleRes.ok || !settleData.success) {
-          const errMsg = settleData.errorReason || settleData.error || `PayAI HTTP ${settleRes.status}`;
-          return return402Challenge(c, spec, `Solana PayAI settlement rejected: ${errMsg}`);
+        if (!settleRes.ok || settleData.success !== true || !/^[1-9A-HJ-NP-Za-km-z]{64,88}$/.test(settleData.transaction || "") || settleData.payer !== solanaAuthorization.payer || (settleData.network !== undefined && settleData.network !== CONFIG.solanaNetwork)) {
+          // Even an HTTP error may occur after broadcast. Keep pending until reconciled.
+          return c.json({ error: "SETTLEMENT_PENDING_RECONCILIATION", message: "Facilitator did not return a complete confirmed receipt; do not pay again." }, 503);
         }
 
         replayCache.set(solSigHash, true);
         X402_METRICS.settlements++;
         const paymentInfo = {
           success: true,
-          payer: settleData.payer || parsed.payload?.payer || "solana-payer",
-          transaction: settleData.transaction || solSigHash,
+          payer: settleData.payer,
+          transaction: settleData.transaction,
           amount: spec.amountMicroUnits,
           network: CONFIG.solanaNetwork,
           resource: resUrl,
         };
+        fulfillmentStore.complete(solSigHash, paymentInfo);
         c.header("PAYMENT-RESPONSE", Buffer.from(JSON.stringify(paymentInfo)).toString("base64"));
-        return next();
+        return c.res;
       } catch (solErr: any) {
-        return return402Challenge(c, spec, `PayAI facilitator exception: ${solErr.message}`);
+        return c.json({ error: "SETTLEMENT_PENDING_RECONCILIATION", message: "Facilitator response unavailable; prepared result retained. Do not pay again." }, 503);
       }
     }
 
@@ -319,7 +372,9 @@ export const x402Middleware = createMiddleware<{
     const value = BigInt(auth.value ?? auth.amount ?? auth.amountUsdc ?? 0);
     const validBefore = BigInt(auth.validBefore ?? auth.deadline ?? Math.floor(Date.now() / 1000) + 3600);
     const validAfter = BigInt(auth.validAfter ?? 0);
-    const nonce = (auth.nonce ?? "0x0000000000000000000000000000000000000000000000000000000000000000") as `0x${string}`;
+    const nonce = String(auth.nonce || "") as `0x${string}`;
+    if (!/^0x[0-9a-fA-F]{64}$/.test(nonce)) return return402Challenge(c, spec, "A canonical 32-byte authorization nonce is required");
+    const sigHash = paymentId(`base:${from.toLowerCase()}:${nonce.toLowerCase()}`);
 
     // Verify recipient matches Merchant Payout Wallet
     if (!isAddress(to) || getAddress(to) !== getAddress(CONFIG.merchantAddress)) {
@@ -328,33 +383,11 @@ export const x402Middleware = createMiddleware<{
 
     // Verify amount is at least route required micro-units
     const requiredUnits = BigInt(spec.amountMicroUnits);
-    if (value < requiredUnits) {
+    if (value !== requiredUnits) {
       return return402Challenge(
         c,
         spec,
-        `Insufficient payment: requires ${spec.amountMicroUnits} micro-units USDC, received ${value}`
-      );
-    }
-
-    // Verify validity window
-    const nowSec = BigInt(Math.floor(Date.now() / 1000));
-    if (validBefore < nowSec - 60n) {
-      return return402Challenge(c, spec, "Payment authorization expired");
-    }
-    if (validAfter > nowSec + 300n) {
-      return return402Challenge(c, spec, "Payment authorization not yet valid");
-    }
-
-    // Replay protection via signature hash
-    const sigHash = createHash("sha256").update(signature).digest("hex");
-    if (replayCache.has(sigHash)) {
-      X402_METRICS.replaysPrevented++;
-      return c.json(
-        {
-          error: "replay_detected",
-          message: "Payment authorization already consumed. Nonce replay prevented.",
-        },
-        409
+        `Exact payment required: ${spec.amountMicroUnits} micro-units USDC, received ${value}`
       );
     }
 
@@ -426,8 +459,32 @@ export const x402Middleware = createMiddleware<{
     if (!isValid) {
       return return402Challenge(c, spec, "Invalid EIP-712 cryptographic signature");
     }
+    validateMetadata({ scheme: "exact", network: `eip155:${CONFIG.chainId}`, amount: spec.amountMicroUnits, asset: CONFIG.usdcAddress, payTo: CONFIG.merchantAddress });
+    const recovered = recover(sigHash);
+    if (recovered) return recovered;
+    // Verify validity window
+    const nowSec = BigInt(Math.floor(Date.now() / 1000));
+    if (validBefore <= nowSec || validBefore > nowSec + 300n) {
+      return return402Challenge(c, spec, "Payment authorization expired");
+    }
+    if (validAfter > nowSec) {
+      return return402Challenge(c, spec, "Payment authorization not yet valid");
+    }
 
-    // Production on-chain settlement via CanaryGuard CDP Facilitator Relay
+    // Replay protection via signature hash
+    if (replayCache.has(sigHash)) {
+      X402_METRICS.replaysPrevented++;
+      return c.json(
+        {
+          error: "replay_detected",
+          message: "Payment authorization already consumed. Nonce replay prevented.",
+        },
+        409
+      );
+    }
+
+
+    // Direct facilitator settlement; no unauthenticated payment-only relay dependency.
     const host = c.req.header("host") || `localhost:${CONFIG.port}`;
     const proto = c.req.header("x-forwarded-proto") || (host.includes("onrender.com") ? "https" : "http");
     const baseUrl = host.includes("onrender.com") ? "https://rugshield-402.onrender.com" : `${proto}://${host}`;
@@ -450,6 +507,7 @@ export const x402Middleware = createMiddleware<{
     };
 
     const relayBody = {
+      x402Version: 2,
       paymentPayload: {
         x402Version: 2,
         resource: resourceObj,
@@ -472,39 +530,44 @@ export const x402Middleware = createMiddleware<{
       paymentRequirements: cleanRequirements,
     };
 
+    const preparationError = await prepare(sigHash);
+    if (preparationError) return preparationError;
+
     let settleData: any = null;
     try {
-      const relayRes = await fetch("https://canaryguard-402.onrender.com/v1/internal/cdp-settle", {
+      const relayRes = await fetch(`${CONFIG.payaiFacilitator}/settle`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(relayBody),
         signal: AbortSignal.timeout(35000),
       });
       settleData = await relayRes.json().catch(() => ({}));
-      if (!relayRes.ok || !settleData.success) {
+      if (!relayRes.ok || settleData.success !== true || !/^0x[0-9a-fA-F]{64}$/.test(settleData.transaction || "") || (settleData.payer && String(settleData.payer).toLowerCase() !== getAddress(from).toLowerCase()) || (settleData.network !== undefined && settleData.network !== `eip155:${CONFIG.chainId}`)) {
         const errMsg = settleData.error || settleData.errorReason || `Relay HTTP ${relayRes.status}`;
         console.warn(`[rugshield-402] On-chain settlement rejected: ${errMsg}`);
-        return return402Challenge(c, spec, `On-chain settlement rejected: ${errMsg}`);
+        return c.json({ error: "SETTLEMENT_PENDING_RECONCILIATION", message: "Facilitator did not return a complete confirmed receipt; do not pay again." }, 503);
       }
     } catch (relayErr: any) {
-      console.error(`[rugshield-402] CDP relay exception: ${relayErr.message}`);
-      return return402Challenge(c, spec, `CDP relay exception: ${relayErr.message}`);
+      console.error(`[rugshield-402] Facilitator exception: ${relayErr.message}`);
+      return c.json({ error: "SETTLEMENT_PENDING_RECONCILIATION", message: "Facilitator response unavailable; prepared result retained. Do not pay again." }, 503);
     }
 
     // Mark as consumed in replay cache
     replayCache.set(sigHash, true);
     X402_METRICS.settlements++;
 
-    const txHash = settleData.transaction || `0x${sigHash}`;
+    const txHash = settleData.transaction;
     const paymentInfo = {
       success: true,
-      payer: settleData.payer || getAddress(from),
+      payer: getAddress(from),
       transaction: txHash,
       amount: value.toString(),
-      network: settleData.network || `eip155:${CONFIG.chainId}`,
+      network: `eip155:${CONFIG.chainId}`,
       resource: resUrl,
     };
 
+    try { fulfillmentStore.complete(sigHash, paymentInfo); }
+    catch { return c.json({ error: "SETTLEMENT_PENDING_RECONCILIATION", message: "Settlement succeeded but local receipt persistence failed. Do not pay again; prepared result retained." }, 503); }
     c.header("PAYMENT-RESPONSE", Buffer.from(JSON.stringify(paymentInfo)).toString("base64"));
     c.set("payment", {
       payer: getAddress(from),
@@ -512,10 +575,19 @@ export const x402Middleware = createMiddleware<{
       signatureHash: sigHash,
     });
 
-    return next();
+    return c.res;
   } catch (err: any) {
+    if (err instanceof FulfillmentStorageError) return c.json({ error: "PAYMENT_STORAGE_UNAVAILABLE", message: err.message }, 503);
     return return402Challenge(c, spec, `Malformed payment payload: ${err.message}`);
   }
+});
+
+// Hono has already finalized c.res after next(). Explicitly replace it when settlement
+// fails; merely returning a new 503 would otherwise leak the prepared HTTP 200.
+export const x402Middleware = createMiddleware<{ Variables: { payment?: X402VerificationResult } }>(async (c, next) => {
+  const response = await paymentHandler(c, next);
+  if (response instanceof Response) c.res = response;
+  return response;
 });
 
 function buildInputSchema(example: Record<string, any>) {
@@ -603,12 +675,12 @@ function buildRugShieldTeaser(spec: EndpointPriceSpec, tokAddr: string) {
     chain: chainName,
     preliminary_metrics: {
       standard: isSolana ? "SPL Token" : "ERC-20",
-      market_state: "ACTIVE_LIQUIDITY_DETECTED",
+      market_state: "NOT_QUERIED",
       basic_risk_grade: "UNVERIFIED_HONEYPOT_RISK",
-      preliminary_liquidity_usd: "$50,000+",
-      dex_venues_detected: isSolana ? ["Raydium", "Orca Whirlpools"] : ["Uniswap V3 (Base)", "Aerodrome Slipstream"],
+      preliminary_liquidity_usd: null,
+      dex_venues_detected: [],
     },
-    teaser_verdict: `50% FREE PREVIEW READY — Critical pre-trade checks flagged suspicious transfer logic. Unlock full cryptographic simulation for ${spec.priceUsd} USDC.`,
+    teaser_verdict: `No token risk conclusion has been acquired in this payment challenge. Successful analysis costs ${spec.priceUsd} USDC; failed analysis is not settled.`,
   };
 
   const lockedFeatures = [

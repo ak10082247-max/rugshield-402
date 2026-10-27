@@ -10,47 +10,18 @@ export interface LiveTokenAudit {
   symbol: string;
   pool_name: string;
   dex: string;
-  is_honeypot: boolean;
-  buy_tax_bps: number;
-  sell_tax_bps: number;
-  liquidity_usd: number;
-  risk_score: number;
+  is_honeypot: boolean | null;
+  buy_tax_bps: number | null;
+  sell_tax_bps: number | null;
+  liquidity_usd: number | null;
+  risk_score: number | null;
   recommendation: string;
   scanned_at: number;
   tx_hash?: string;
 }
 
 // In-memory ring buffer of recently audited tokens
-export const RECENT_SCANS: LiveTokenAudit[] = [
-  {
-    token_address: "0x4200000000000000000000000000000000000006",
-    name: "Wrapped Ether",
-    symbol: "WETH",
-    pool_name: "WETH / USDC",
-    dex: "aerodrome",
-    is_honeypot: false,
-    buy_tax_bps: 0,
-    sell_tax_bps: 0,
-    liquidity_usd: 250000000,
-    risk_score: 0.02,
-    recommendation: "SAFE_TO_SWAP",
-    scanned_at: Math.floor(Date.now() / 1000) - 300,
-  },
-  {
-    token_address: "0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed",
-    name: "Degen",
-    symbol: "DEGEN",
-    pool_name: "DEGEN / WETH",
-    dex: "uniswap-v3",
-    is_honeypot: false,
-    buy_tax_bps: 0,
-    sell_tax_bps: 0,
-    liquidity_usd: 554342,
-    risk_score: 0.05,
-    recommendation: "SAFE_TO_SWAP",
-    scanned_at: Math.floor(Date.now() / 1000) - 120,
-  },
-];
+export const RECENT_SCANS: LiveTokenAudit[] = [];
 
 const SEEN_TOKENS = new Set<string>();
 
@@ -117,7 +88,7 @@ export async function scanBatch(maxTokens: number = 3): Promise<LiveTokenAudit[]
       if (RECENT_SCANS.length > 50) RECENT_SCANS.pop();
       audited.push(audit);
 
-      console.log(`[autonomous-scanner] Audit result: ${audit.symbol} | Safe: ${!audit.is_honeypot} | Tax: ${audit.sell_tax_bps}bps`);
+      console.log(`[autonomous-scanner] Audit result: ${audit.symbol} | Scoped verdict: ${audit.recommendation} | Tax: ${audit.sell_tax_bps}bps`);
     } catch (err: any) {
       console.warn(`[autonomous-scanner] Error auditing ${pool.address}:`, err.message);
     }

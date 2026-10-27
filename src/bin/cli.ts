@@ -28,8 +28,8 @@ Options:
       simulate_sell: true,
     });
 
-    const isSafe = !res.is_honeypot && res.sell_tax_bps < 1000;
-    const badge = isSafe ? "\x1b[32m[SAFE TO SWAP]\x1b[0m" : "\x1b[31m[HIGH RISK / HONEYPOT]\x1b[0m";
+    const isSafe = res.is_honeypot === false && res.sell_tax_bps !== null && res.sell_tax_bps < 1000;
+    const badge = isSafe ? "\x1b[32m[SELL SUCCEEDED IN TEST]\x1b[0m" : "\x1b[31m[UNVERIFIED / REVIEW REQUIRED]\x1b[0m";
 
     console.log(`
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -38,14 +38,14 @@ Options:
 Token:       ${res.name} (${res.symbol})
 Address:     ${res.token}
 Verdict:     ${badge}
-Honeypot:    ${res.is_honeypot ? "\x1b[31mYES (Transfer Blocked)\x1b[0m" : "\x1b[32mNO\x1b[0m"}
-Buy Tax:     ${(res.buy_tax_bps / 100).toFixed(1)}%
-Sell Tax:    ${(res.sell_tax_bps / 100).toFixed(1)}%
-Liquidity:   $${Number(res.liquidity_usd).toLocaleString()} USD
-Risk Score:  ${(res.risk_score * 100).toFixed(0)} / 100
+Honeypot:    ${res.is_honeypot === null ? "UNKNOWN (not simulated)" : res.is_honeypot ? "\x1b[31mYES (Transfer Blocked)\x1b[0m" : "\x1b[32mNO\x1b[0m"}
+Buy Tax:     ${(res.buy_tax_bps === null ? "UNKNOWN" : (res.buy_tax_bps / 100).toFixed(1))}%
+Sell Tax:    ${(res.sell_tax_bps === null ? "UNKNOWN" : (res.sell_tax_bps / 100).toFixed(1))}%
+Liquidity:   $${(res.liquidity_usd === null ? "UNKNOWN" : res.liquidity_usd.toLocaleString())} USD
+Risk Score:  ${(res.risk_score === null ? "UNKNOWN" : (res.risk_score * 100).toFixed(0))} / 100
 Attestation: ${res.attestation}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-⚡ Gated by x402 Protocol on Base Mainnet ($0.005 USDC/scan)
+Local read-only core. Hosted API pricing: /pricing.
 `);
   } catch (err: any) {
     console.error(`❌ Scan failed: ${err.message}`);

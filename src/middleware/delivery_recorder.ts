@@ -21,7 +21,8 @@ export interface DeliveryRecord {
 const MAX_MEMORY_RECORDS = 200;
 const memoryStore: DeliveryRecord[] = [];
 const paidMemoryStore: DeliveryRecord[] = [];
-const logFilePath = path.join(process.cwd(), "deliveries.jsonl");
+const seenSettlements = new Set<string>();
+const logFilePath = process.env.RUGSHIELD_DELIVERY_LOG || path.join(process.cwd(), "deliveries.jsonl");
 
 function decodePayerFromHeader(rawHeader?: string): { payer: string; amount: number } {
   if (!rawHeader) return { payer: "unpaid_probe", amount: 0.0 };
@@ -53,7 +54,7 @@ function decodePayerFromHeader(rawHeader?: string): { payer: string; amount: num
 
 export const deliveryRecorderMiddleware = createMiddleware(async (c, next) => {
   const reqPath = c.req.path;
-  if (reqPath === "/health" || reqPath === "/ping" || reqPath === "/favicon.ico" || reqPath === "/robots.txt") {
+  if (reqPath === "/health" || reqPath === "/ping" || reqPath === "/version" || reqPath === "/favicon.ico" || reqPath === "/robots.txt") {
     return next();
   }
 
@@ -87,15 +88,19 @@ export const deliveryRecorderMiddleware = createMiddleware(async (c, next) => {
 
   let resolvedPayer = payer;
   let resolvedAmount = amount;
-  let settled = Boolean(status === 200 && rawPaymentHdr && reqPath.startsWith("/v1/scan"));
+  let settled = false;
+  let settlementId = "";
 
   const payRespHeader = c.res.headers.get("PAYMENT-RESPONSE") || c.res.headers.get("X-PAYMENT-RESPONSE");
   if (payRespHeader) {
     try {
       const parsedResp = JSON.parse(Buffer.from(payRespHeader, "base64").toString("utf8"));
-      if (parsedResp.payer) resolvedPayer = String(parsedResp.payer).toLowerCase();
+      if (parsedResp.payer) resolvedPayer = String(parsedResp.network).startsWith("eip155:") ? String(parsedResp.payer).toLowerCase() : String(parsedResp.payer);
       if (parsedResp.amount) resolvedAmount = Number(parsedResp.amount) / 1e6;
-      if (parsedResp.success === true) settled = true;
+      if (parsedResp.success === true && parsedResp.transaction && parsedResp.network && /^\d+$/.test(String(parsedResp.amount)) && Number(parsedResp.amount) > 0 && parsedResp.transaction !== "freemium-1-of-1") {
+        settled = true;
+        settlementId = `${parsedResp.network}:${parsedResp.transaction}`;
+      }
     } catch {}
   }
 
@@ -126,7 +131,7 @@ export const deliveryRecorderMiddleware = createMiddleware(async (c, next) => {
     response_preview: responsePreview,
   };
 
-  console.log(JSON.stringify({
+  if (process.env.RUGSHIELD_DISABLE_DELIVERY_LOGGING !== "1") console.log(JSON.stringify({
     ts: record.timestamp_utc,
     service: "rugshield-402",
     endpoint: `${c.req.method} ${reqPath}`,
@@ -144,7 +149,9 @@ export const deliveryRecorderMiddleware = createMiddleware(async (c, next) => {
     memoryStore.pop();
   }
 
-  if (settled) {
+  if (settled && !seenSettlements.has(settlementId)) {
+    seenSettlements.add(settlementId);
+    if (seenSettlements.size > 100_000) seenSettlements.delete(seenSettlements.values().next().value!);
     paidMemoryStore.unshift(record);
     if (paidMemoryStore.length > MAX_MEMORY_RECORDS) {
       paidMemoryStore.pop();

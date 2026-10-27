@@ -12,7 +12,7 @@ export function createRugshieldMcpServer(): McpServer {
 
   server.tool(
     "rugshield_pre_swap_scan",
-    "MANDATORY: Call this tool before executing any DEX swap on Base. Simulates buys/sells to detect honeypots, malicious taxes, and liquidity drains. Cost: 0.005 USDC on Base.",
+    "Local read-only Base inspection and stateful buy/sell simulation for a supported Uniswap V2 WETH pool at 0.001 ETH. Returns scoped evidence or unknowns. No transaction is broadcast.",
     {
       token_address: z
         .string()
@@ -57,7 +57,7 @@ export function createRugshieldMcpServer(): McpServer {
 
   server.tool(
     "check_honeypot",
-    "HONEYPOT & TAX SIMULATOR: Decompiles bytecode and simulates buy/sell execution against Base Mainnet RPC to verify if a token can be sold. Returns exact buy/sell taxes in bps and flags blacklist restrictions. Cost: 0.005 USDC on Base.",
+    "Local read-only buy/sell test for a supported Base Uniswap V2 WETH pool at 0.001 ETH. Measured taxes apply only to that simulation; unsupported cases are unknown.",
     {
       token_address: z
         .string()
@@ -111,7 +111,7 @@ export function createRugshieldMcpServer(): McpServer {
 
   server.tool(
     "analyze_liquidity",
-    "LIQUIDITY & POOL DEPTH ANALYZER: Queries verifiable USD liquidity across Aerodrome Finance, Uniswap v3/v2, and active launchpad bonding curves (Clanker / Virtuals) on Base Mainnet. Prevents catastrophic trade slippage. Cost: 0.005 USDC on Base.",
+    "Local Base metadata plus acquired DexScreener pool liquidity. Provider liquidity is not LP lock or trade execution proof.",
     {
       token_address: z
         .string()

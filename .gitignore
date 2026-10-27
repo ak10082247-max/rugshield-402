@@ -11,3 +11,8 @@ coverage/
 
 mcp-publisher.exe
 
+
+.x402-fulfillments/
+deliveries.jsonl
+__pycache__/
+*.pyc

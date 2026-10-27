@@ -15,16 +15,9 @@ try {
 
   console.log(`[rugshield-apify] Scanning token ${tokenAddress} on ${chain}...`);
 
-  // Charge 1 Pay-Per-Event (PPE) event: token_scan ($0.005 USD)
-  try {
-    await Actor.charge({ eventName: 'token_scan', count: 1 });
-    console.log('[rugshield-apify] Charged 1 token_scan PPE event ($0.005)');
-  } catch (chargeErr: any) {
-    console.warn(`[rugshield-apify] PPE charge notice: ${chargeErr?.message || chargeErr}`);
-  }
-
-  // Execute DEX token simulation & honeypot screening
-  const result = await scanToken({ token_address: tokenAddress });
+  if (chain !== "base" && chain !== "8453" && chain !== "eip155:8453") throw new Error("This Actor supports Base simulation only");
+  const result = await scanToken({ token_address: tokenAddress, chain_id: 8453, simulate_sell: true });
+  if (result.simulation_status !== "passed") throw new Error("Actual buy/sell simulation could not complete; no event charge attempted");
 
   const payload = {
     ...result,
@@ -45,6 +38,7 @@ try {
   };
 
   await Actor.pushData(payload);
+  await Actor.charge({ eventName: 'token_scan', count: 1 });
   console.log('[rugshield-apify] Scan output successfully pushed to dataset');
   await Actor.exit();
 } catch (err: any) {

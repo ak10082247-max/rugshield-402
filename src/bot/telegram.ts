@@ -64,7 +64,7 @@ Paste any ERC-20 contract address on Base (0x...) or send <code>/scan 0x...</cod
 • Real-time DEX buy/sell simulation
 • 99% tax trap detection
 • Aerodrome & Uniswap v3 pool depth
-• x402 Protocol Gated ($0.005 USDC/scan)
+• Local read-only analysis; hosted API prices are in /pricing
 
 <b>Merchant Payout Address:</b>
 <code>${CONFIG.merchantAddress}</code>
@@ -104,9 +104,9 @@ Paste any ERC-20 contract address on Base (0x...) or send <code>/scan 0x...</cod
         simulate_sell: true,
       });
 
-      const isSafe = !result.is_honeypot && result.sell_tax_bps < 1000;
+      const isSafe = result.is_honeypot === false && result.sell_tax_bps !== null && result.sell_tax_bps < 1000;
       const statusIcon = isSafe ? "✅" : "🚨";
-      const statusText = isSafe ? "SAFE TO SWAP" : "HIGH RISK / DRAINER TRAP";
+      const statusText = isSafe ? "SELL SUCCEEDED IN TEST" : "UNVERIFIED / REVIEW REQUIRED";
 
       const report = `
 🛡️ <b>RugShield 402 Audit Report</b>
@@ -115,11 +115,11 @@ Paste any ERC-20 contract address on Base (0x...) or send <code>/scan 0x...</cod
 📍 <b>Address:</b> <code>${result.token}</code>
 
 ${statusIcon} <b>Status:</b> <b>${statusText}</b>
-${result.is_honeypot ? "🚫 <b>HONEYPOT: YES (Transfers Disabled)</b>\n" : "🟢 <b>Honeypot:</b> None Detected\n"}
-📊 <b>Buy Tax:</b> ${(result.buy_tax_bps / 100).toFixed(1)}%
-📉 <b>Sell Tax:</b> ${(result.sell_tax_bps / 100).toFixed(1)}%
-💧 <b>DEX Liquidity:</b> $${Number(result.liquidity_usd).toLocaleString()}
-⚖️ <b>Risk Score:</b> ${(result.risk_score * 100).toFixed(0)} / 100
+${result.is_honeypot === null ? "Honeypot: UNKNOWN (not simulated)" : result.is_honeypot ? "🚫 <b>HONEYPOT: YES (Transfers Disabled)</b>\n" : "🟢 <b>Honeypot:</b> None Detected\n"}
+📊 <b>Buy Tax:</b> ${(result.buy_tax_bps === null ? "UNKNOWN" : (result.buy_tax_bps / 100).toFixed(1))}%
+📉 <b>Sell Tax:</b> ${(result.sell_tax_bps === null ? "UNKNOWN" : (result.sell_tax_bps / 100).toFixed(1))}%
+💧 <b>DEX Liquidity:</b> $${(result.liquidity_usd === null ? "UNKNOWN" : result.liquidity_usd.toLocaleString())}
+⚖️ <b>Risk Score:</b> ${(result.risk_score === null ? "UNKNOWN" : (result.risk_score * 100).toFixed(0))} / 100
 
 ${(result.risk_factors?.length ?? 0) > 0 ? `⚠️ <b>Risk Factors:</b>\n• ${(result.risk_factors || []).join("\n• ")}\n` : ""}
 🔒 <i>Attestation: <code>${result.attestation}</code></i>

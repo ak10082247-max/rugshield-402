@@ -463,7 +463,7 @@
     <div class="ticker-item" onclick="loadTarget('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v')">
       <span class="chain-pill chain-sol">SOL</span>
       <strong>SOL-USDC</strong>
-      <span style="color:#34d399">AAA SAFE</span>
+      <span style="color:#34d399">NOT ASSESSED</span>
     </div>
     <div class="ticker-item" onclick="loadTarget('0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b')">
       <span class="chain-pill chain-base">BASE</span>
@@ -498,7 +498,7 @@
     <div class="header">
       <div class="brand">
         <h1>🛡️ Kurox 402 Live Security &amp; Whale Terminal</h1>
-        <p>Dual-Chain Autonomous Agent &amp; Trader Intelligence — Instant 50% Free Teaser + $0.01 USDC x402 Unlock on Solana &amp; Base</p>
+        <p>Actual token inspection on Base and Solana. Scoped Base swap simulation costs 0.010 USDC when completed.</p>
       </div>
       <div class="protocol-pills">
         <a class="pill" href="/.well-known/x402.json" target="_blank"><strong>x402 v2</strong> Bazaar</a>
@@ -541,7 +541,7 @@
           </div>
           <div class="metric-box">
             <div class="metric-label">Verified Pool Liquidity</div>
-            <div class="metric-val" id="tLiquidity" style="color:#10b981;">$78,500,000 USD</div>
+            <div class="metric-val" id="tLiquidity" style="color:#10b981;">Unknown until acquired</div>
           </div>
           <div class="metric-box">
             <div class="metric-label">Surface Status</div>
@@ -563,19 +563,19 @@
           <div class="metrics-row">
             <div class="metric-box">
               <div class="metric-label">Insider / Sybil Cluster Map</div>
-              <div class="metric-val" id="uClusters" style="color:#f59e0b;">2 Dev Clusters (4.8% Supply)</div>
+              <div class="metric-val" id="uClusters" style="color:#f59e0b;">Not analyzed</div>
             </div>
             <div class="metric-box">
               <div class="metric-label">State-Override Swap Simulation</div>
-              <div class="metric-val" id="uSim" style="color:#10b981;">0.0% Buy / 0.0% Sell Tax</div>
+              <div class="metric-val" id="uSim" style="color:#10b981;">Unknown until simulated</div>
             </div>
             <div class="metric-box">
               <div class="metric-label">Smart-Money 24h Netflow</div>
-              <div class="metric-val" id="uNetflow" style="color:#14f195;">+$428,900 USDC Inflow</div>
+              <div class="metric-val" id="uNetflow" style="color:#14f195;">Not analyzed</div>
             </div>
             <div class="metric-box">
               <div class="metric-label">Cryptographic Verdict</div>
-              <div class="metric-val" id="uVerdict" style="color:#34d399;">INSTITUTIONAL_GRADE_SAFE</div>
+              <div class="metric-val" id="uVerdict" style="color:#34d399;">Not assessed</div>
             </div>
           </div>
           <pre class="json-viewer" id="unlockedJson">{
@@ -591,14 +591,14 @@
         <div class="paywall-overlay" id="paywallOverlay">
           <div class="paywall-title">🔒 Insider Cluster Map, Honeypot Calldata Simulation &amp; Smart-Money Netflow</div>
           <div class="paywall-sub">
-            Unlock the full deterministic bytecode simulation, top-50 holder sybil cluster graph, and live smart-money whale netflow with a single $0.01 USDC x402 micropayment.
+            Purchase an actual 0.001 ETH buy/sell simulation for a supported Base Uniswap V2 pool. Holder clusters and smart-money flow remain unavailable and are shown as unknown.
           </div>
           <div class="pay-buttons">
             <button class="btn-pay-sol" onclick="unlockWithSolana()">
-              ⚡ Unlock Full Report — $0.01 USDC on Solana (Phantom / Solflare)
+              Solana swap simulation unavailable — free mint inspection above
             </button>
             <button class="btn-pay-base" onclick="unlockWithBase()">
-              🔵 Unlock Full Report — $0.01 USDC on Base (Coinbase Wallet / MetaMask)
+              Buy scoped Base simulation — 0.010 USDC
             </button>
             <button class="btn-pay-sol" style="background:rgba(153,69,255,0.18);color:#e2e8f0;border:1px solid #9945ff;" onclick="copyDialectBlinkUrl()">
               ⚡ Copy 1-Click Solana Blink for X / Telegram
@@ -640,19 +640,13 @@
       }
     }
 
-    function detectPaidEndpoint() {
-      const host = window.location.hostname;
-      if (host.includes("rugshield")) return "/v1/scan";
-      if (host.includes("stealthguard")) return "/v1/pre_trade_agent_gate";
-      if (host.includes("tollbooth")) return "/toll/ai_intel";
-      return "/v1/base/token";
-    }
+    function detectPaidEndpoint() { return "/v1/scan"; }
 
     function setStatus(msg, color = "#38bdf8") {
       const el = document.getElementById("paymentStatus");
       if (el) {
         el.style.color = color;
-        el.innerHTML = msg;
+        el.textContent = msg;
       }
     }
 
@@ -663,39 +657,22 @@
     }
 
     async function runFreeTeaser() {
-      const val = document.getElementById("targetInput").value.trim() || "0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b";
-      document.getElementById("tTarget").innerText = val;
-      const isSol = !val.startsWith("0x") && !val.startsWith("http") && val.length >= 32 && val.length <= 48;
-      const isUrl = val.startsWith("http");
-      document.getElementById("tNetwork").innerText = isSol
-        ? "Solana Mainnet (SPL)"
-        : isUrl
-        ? "Web / Polymarket CLOB"
-        : "Base Mainnet (8453)";
-      document.getElementById("tLiquidity").innerText = isSol ? "$1,420,000 USD (Raydium/Pump)" : "$78,500,000 USD (Aerodrome/UniV3)";
-      document.getElementById("tStatus").innerText = "50% TEASER READY — LOCKED ALPHA BELOW";
-
-      // Re-lock blurred section when switching target
+      const target = document.getElementById("targetInput").value.trim();
+      document.getElementById("tTarget").innerText = target || "Enter a token address";
+      document.getElementById("tNetwork").innerText = target.startsWith("0x") ? "Base Mainnet (8453)" : "Solana Mainnet (SPL)";
+      document.getElementById("tLiquidity").innerText = "Unknown until acquired";
+      document.getElementById("tStatus").innerText = "Fetching actual token evidence...";
       document.getElementById("blurredSection").classList.remove("unlocked");
       document.getElementById("paywallOverlay").classList.remove("hidden");
-      document.getElementById("lockBadge").innerText = "LOCKED — $0.01 USDC x402";
-      document.getElementById("lockBadge").style.background = "rgba(245, 158, 11, 0.15)";
-      document.getElementById("lockBadge").style.color = "#fbbf24";
-
+      document.getElementById("lockBadge").innerText = "UNVERIFIED — NO PURCHASE YET";
+      if (!target) return;
       try {
-        const res = await fetch(`/api/actions/scan?token=${encodeURIComponent(val)}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.teaser) {
-            if (data.teaser.liquidity_usd) {
-              document.getElementById("tLiquidity").innerText = "$" + Number(data.teaser.liquidity_usd).toLocaleString() + " USD";
-            }
-            if (data.teaser.surface_status) {
-              document.getElementById("tStatus").innerText = data.teaser.surface_status;
-            }
-          }
-        }
-      } catch (e) {}
+        const response = await fetch("/v1/scan/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token_address: target }) });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message || data.error || "Inspection unavailable");
+        document.getElementById("tLiquidity").innerText = typeof data.liquidity_usd === "number" ? "$" + data.liquidity_usd.toLocaleString() + " USD (provider observed)" : "Unknown — provider data unavailable";
+        document.getElementById("tStatus").innerText = data.recommendation || data.verdict || "Metadata acquired; swap execution unverified";
+      } catch(error) { document.getElementById("tStatus").innerText = error.message; }
     }
 
     function revealUnlockedReport(data, txOrReceipt, chainLabel) {
@@ -706,14 +683,10 @@
       badge.style.background = "rgba(16, 185, 129, 0.2)";
       badge.style.color = "#34d399";
 
-      document.getElementById("uClusters").innerText = data.clusters_detected !== undefined
-        ? `${data.clusters_detected} Sybil Clusters (${data.top_10_holders_pct || 14.2}% Top-10)`
-        : "0 Malicious Insider Clusters";
-      document.getElementById("uSim").innerText = `${data.buy_tax_bps || 0} bps Buy / ${data.sell_tax_bps || 0} bps Sell`;
-      document.getElementById("uNetflow").innerText = data.smart_money_netflow_usd
-        ? `+$${Number(data.smart_money_netflow_usd).toLocaleString()} USDC`
-        : "+$318,450 USDC (24h Smart Money)";
-      document.getElementById("uVerdict").innerText = data.verdict || data.status || "VERIFIED_SAFE";
+      document.getElementById("uClusters").innerText = typeof data.clusters_detected === "number" ? `${data.clusters_detected} observed clusters` : "Unknown — cluster analysis not performed";
+      document.getElementById("uSim").innerText = `${data.buy_tax_bps ?? "Unknown"} bps Buy / ${data.sell_tax_bps ?? "Unknown"} bps Sell`;
+      document.getElementById("uNetflow").innerText = typeof data.smart_money_netflow_usd === "number" ? `$${data.smart_money_netflow_usd.toLocaleString()} USDC` : "Unknown — netflow analysis not performed";
+      document.getElementById("uVerdict").innerText = data.recommendation || data.verdict || "No overall safety conclusion";
       document.getElementById("unlockedJson").innerText = JSON.stringify(
         {
           x402_settlement: { chain: chainLabel, receipt: txOrReceipt, amount_usdc: "0.010" },
@@ -724,248 +697,66 @@
       );
     }
 
-    // 1-Click Base Unlock via EIP-3009 TransferWithAuthorization + PAYMENT-SIGNATURE
-    async function unlockWithBase() {
-      const target = document.getElementById("targetInput").value.trim() || "0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b";
-      if (!window.ethereum) {
-        const cbUrl = `https://go.cb-w.com/dapp?cb_url=${encodeURIComponent(window.location.href)}`;
-        const mmUrl = `https://metamask.app.link/dapp/${window.location.host}${window.location.pathname}${window.location.search}`;
-        setStatus(
-          `MetaMask or Coinbase Wallet not detected.<br>` +
-          `<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">` +
-          `<a href="${cbUrl}" target="_blank" style="padding:8px 14px;background:#0052ff;color:#fff;border-radius:6px;text-decoration:none;font-weight:700;font-size:12px;">📱 Open in Coinbase Wallet</a>` +
-          `<a href="${mmUrl}" target="_blank" style="padding:8px 14px;background:#f6851b;color:#fff;border-radius:6px;text-decoration:none;font-weight:700;font-size:12px;">🦊 Open in MetaMask</a>` +
-          `</div>`,
-          "#ef4444"
-        );
-        return;
-      }
+    const pendingPurchaseKey = "rugshield-pending-base-purchase-v1";
+    async function submitBasePurchase(purchase) {
+      purchase.attempts = (purchase.attempts || 0) + 1;
+      sessionStorage.setItem(pendingPurchaseKey, JSON.stringify(purchase));
+      setStatus("Executing analysis, then settling only a completed result...");
       try {
-        setStatus("Connecting to Base Wallet (Coinbase Wallet / MetaMask)...");
-        const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
-        const from = accounts[0];
-
-        try {
-          await window.ethereum.request({
-            method: "wallet_switchEthereumChain",
-            params: [{ chainId: "0x2105" }]
-          });
-        } catch (switchErr) {
-          if (switchErr.code === 4902) {
-            await window.ethereum.request({
-              method: "wallet_addEthereumChain",
-              params: [{
-                chainId: "0x2105",
-                chainName: "Base Mainnet",
-                nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
-                rpcUrls: ["https://mainnet.base.org"],
-                blockExplorerUrls: ["https://basescan.org"]
-              }]
-            });
-          }
+        const response = await fetch(purchase.url, { method: "POST", headers: { "Content-Type": "application/json", "PAYMENT-SIGNATURE": purchase.header }, body: purchase.body });
+        const data = await response.json();
+        if (!response.ok) {
+          const uncertain = purchase.uncertain || data.error === "SETTLEMENT_PENDING_RECONCILIATION" || data.error === "PAYMENT_STORAGE_UNAVAILABLE";
+          if (uncertain) { purchase.uncertain = true; sessionStorage.setItem(pendingPurchaseKey, JSON.stringify(purchase)); }
+          else if (data.payment_collected === false || (response.status === 402 && purchase.attempts === 1)) sessionStorage.removeItem(pendingPurchaseKey);
+          setStatus((uncertain ? "Payment requires reconciliation. Do not pay again. " : "No completed purchase: ") + (data.message || data.error || response.status), "#ef4444");
+          return;
         }
-
-        const now = Math.floor(Date.now() / 1000);
-        const validAfter = 0;
-        const validBefore = now + 3600;
-        const nonceBytes = new Uint8Array(32);
-        window.crypto.getRandomValues(nonceBytes);
-        const nonce = "0x" + Array.from(nonceBytes).map(b => b.toString(16).padStart(2, "0")).join("");
-
-        const typedData = {
-          types: {
-            EIP712Domain: [
-              { name: "name", type: "string" },
-              { name: "version", type: "string" },
-              { name: "chainId", type: "uint256" },
-              { name: "verifyingContract", type: "address" }
-            ],
-            TransferWithAuthorization: [
-              { name: "from", type: "address" },
-              { name: "to", type: "address" },
-              { name: "value", type: "uint256" },
-              { name: "validAfter", type: "uint256" },
-              { name: "validBefore", type: "uint256" },
-              { name: "nonce", type: "bytes32" }
-            ]
-          },
-          domain: {
-            name: "USD Coin",
-            version: "2",
-            chainId: 8453,
-            verifyingContract: BASE_USDC
-          },
-          primaryType: "TransferWithAuthorization",
-          message: {
-            from,
-            to: BASE_MERCHANT,
-            value: "10000",
-            validAfter: String(validAfter),
-            validBefore: String(validBefore),
-            nonce
-          }
-        };
-
-        setStatus("Sign gasless $0.01 USDC EIP-3009 authorization in your wallet...");
-        const signature = await window.ethereum.request({
-          method: "eth_signTypedData_v4",
-          params: [from, JSON.stringify(typedData)]
-        });
-
-        const endpoint = detectPaidEndpoint();
-        const x402Payload = {
-          x402Version: 2,
-          scheme: "exact",
-          network: "eip155:8453",
-          accepted: {
-            scheme: "exact",
-            network: "eip155:8453",
-            asset: BASE_USDC,
-            amount: "10000",
-            payTo: BASE_MERCHANT,
-            maxTimeoutSeconds: 300,
-            extra: { name: "USD Coin", version: "2" }
-          },
-          payload: {
-            signature,
-            authorization: {
-              from,
-              to: BASE_MERCHANT,
-              value: "10000",
-              validAfter: String(validAfter),
-              validBefore: String(validBefore),
-              nonce
-            }
-          }
-        };
-
-        const b64Sig = btoa(JSON.stringify(x402Payload));
-        setStatus("Submitting PAYMENT-SIGNATURE to x402 endpoint & settling on Base Mainnet...");
-
-        const resp = await fetch(`${endpoint}?token_address=${encodeURIComponent(target)}&token=${encodeURIComponent(target)}`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            "PAYMENT-SIGNATURE": b64Sig
-          },
-          body: JSON.stringify({
-            token_address: target,
-            token_or_service_address: target,
-            contractAddress: target,
-            content: `Audit target: ${target}`
-          })
-        });
-
-        const data = await resp.json();
-        if (resp.ok) {
-          const receiptHeader = resp.headers.get("PAYMENT-RESPONSE") || "base-x402-settled";
-          revealUnlockedReport(data, receiptHeader, "BASE MAINNET ($0.01 USDC)");
-        } else {
-          setStatus("Settlement error: " + (data.message || data.error || resp.statusText), "#ef4444");
-        }
-      } catch (err) {
-        setStatus("Base wallet error: " + (err.message || String(err)), "#ef4444");
+        const encodedReceipt = response.headers.get("PAYMENT-RESPONSE");
+        if (!encodedReceipt) throw new Error("Missing settlement receipt; purchase retained for recovery");
+        const receipt = JSON.parse(atob(encodedReceipt));
+        if (receipt.success !== true || receipt.network !== "eip155:8453" || receipt.amount !== "10000" || !/^0x[0-9a-fA-F]{64}$/.test(receipt.transaction || "") || String(receipt.payer).toLowerCase() !== purchase.payer.toLowerCase() || receipt.resource !== location.origin + "/v1/scan") throw new Error("Invalid settlement receipt; do not pay again");
+        sessionStorage.removeItem(pendingPurchaseKey);
+        revealUnlockedReport(data, receipt, "BASE MAINNET (0.010 USDC)");
+        setStatus("Purchased analysis and settlement receipt received. Scope and limitations are included in the result.", "#10b981");
+      } catch(error) {
+        purchase.uncertain = true; sessionStorage.setItem(pendingPurchaseKey, JSON.stringify(purchase));
+        setStatus(error.message + ". Retry recovers this same purchase without signing a replacement payment.", "#ef4444");
       }
     }
 
-    // 1-Click Solana Unlock via Phantom / Solflare + Solana Actions / PayAI x402 Facilitator
-    async function unlockWithSolana() {
-      const target = document.getElementById("targetInput").value.trim() || "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263";
-      const provider = (window.solana && window.solana.isPhantom) ? window.solana : (window.solflare || window.solana);
-      if (!provider) {
-        const phantomUrl = `https://phantom.app/ul/browse/${encodeURIComponent(window.location.href)}?ref=${encodeURIComponent(window.location.origin)}`;
-        const solflareUrl = `https://solflare.com/ul/v1/browse/${encodeURIComponent(window.location.href)}`;
-        setStatus(
-          `Phantom or Solflare not detected.<br>` +
-          `<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">` +
-          `<a href="${phantomUrl}" target="_blank" style="padding:8px 14px;background:linear-gradient(90deg,#ab9ff2,#4e44ce);color:#fff;border-radius:6px;text-decoration:none;font-weight:700;font-size:12px;">👻 Open in Phantom Mobile</a>` +
-          `<a href="${solflareUrl}" target="_blank" style="padding:8px 14px;background:#fc5000;color:#fff;border-radius:6px;text-decoration:none;font-weight:700;font-size:12px;">☀️ Open in Solflare Mobile</a>` +
-          `</div>`,
-          "#ef4444"
-        );
-        return;
-      }
+    async function unlockWithBase() {
+      const target = document.getElementById("targetInput").value.trim();
+      if (!/^0x[a-fA-F0-9]{40}$/.test(target)) { setStatus("Enter a Base token contract address. Solana swap simulation is not available.", "#ef4444"); return; }
       try {
-        setStatus("Connecting to Solana Wallet (Phantom / Solflare)...");
-        const respConn = await provider.connect();
-        const pubkey = (respConn && respConn.publicKey) ? respConn.publicKey.toString() : provider.publicKey.toString();
-
-        setStatus("Building $0.01 USDC SPL transfer transaction via /api/actions/scan...");
-        const actionRes = await fetch(`/api/actions/scan?token=${encodeURIComponent(target)}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ account: pubkey })
-        });
-        const actionData = await actionRes.json();
-        if (!actionRes.ok || !actionData.transaction) {
-          setStatus("Action build error: " + (actionData.message || actionData.error || "Unable to construct SPL transfer"), "#ef4444");
-          return;
+        const saved = JSON.parse(sessionStorage.getItem(pendingPurchaseKey) || "null");
+        if (saved) {
+          if (saved.target !== target) { setStatus("Resolve the existing pending purchase before starting another target.", "#ef4444"); return; }
+          await submitBasePurchase(saved); return;
         }
+        // Acquire and validate the actual quote before requesting a wallet signature.
+        const quoteResponse = await fetch(`/v1/scan?token_address=${encodeURIComponent(target)}`);
+        if (quoteResponse.status !== 402) throw new Error("Expected a current x402 payment quote");
+        const quote = JSON.parse(atob(quoteResponse.headers.get("PAYMENT-REQUIRED") || ""));
+        const accepted = quote.accepts?.find(item => item.network === "eip155:8453");
+        if (quote.x402Version !== 2 || quote.resource?.url !== location.origin + "/v1/scan" || accepted?.scheme !== "exact" || accepted.amount !== "10000" || accepted.asset?.toLowerCase() !== BASE_USDC.toLowerCase() || accepted.payTo?.toLowerCase() !== BASE_MERCHANT.toLowerCase()) throw new Error("Quote differs from the displayed 0.010 USDC Base purchase");
+        if (!window.ethereum) throw new Error("Open this page in a Base wallet browser or connect an Ethereum wallet extension");
+        const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
+        const payer = accounts[0];
+        await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x2105" }] });
+        const nonceBytes = crypto.getRandomValues(new Uint8Array(32));
+        const authorization = { from: payer, to: accepted.payTo, value: accepted.amount, validAfter: "0", validBefore: String(Math.floor(Date.now() / 1000) + 60), nonce: "0x" + Array.from(nonceBytes, byte => byte.toString(16).padStart(2, "0")).join("") };
+        const typedData = { domain: { name: "USD Coin", version: "2", chainId: 8453, verifyingContract: accepted.asset }, primaryType: "TransferWithAuthorization", types: { EIP712Domain: [{name:"name",type:"string"},{name:"version",type:"string"},{name:"chainId",type:"uint256"},{name:"verifyingContract",type:"address"}], TransferWithAuthorization: [{name:"from",type:"address"},{name:"to",type:"address"},{name:"value",type:"uint256"},{name:"validAfter",type:"uint256"},{name:"validBefore",type:"uint256"},{name:"nonce",type:"bytes32"}] }, message: authorization };
+        setStatus("Authorize exactly 0.010 USDC, valid for 60 seconds. Analysis completes before settlement.");
+        const signature = await window.ethereum.request({ method: "eth_signTypedData_v4", params: [payer, JSON.stringify(typedData)] });
+        const payload = { x402Version: 2, resource: quote.resource, accepted, payload: { signature, authorization } };
+        const purchase = { target, payer, url: "/v1/scan", header: btoa(JSON.stringify(payload)), body: JSON.stringify({ token_address: target, chain: "base", simulate_sell: true }), attempts: 0 };
+        await submitBasePurchase(purchase);
+      } catch(error) { setStatus(error.message, "#ef4444"); }
+    }
 
-        setStatus("Please approve the $0.01 USDC Solana transaction in your wallet...");
-        const txBytes = Uint8Array.from(atob(actionData.transaction), c => c.charCodeAt(0));
-        let signedBase64 = actionData.transaction;
-
-        if (provider.signTransaction) {
-          // Support VersionedTransaction or legacy Transaction if web3.js is present, or raw sign
-          if (window.solanaWeb3) {
-            const vTx = window.solanaWeb3.VersionedTransaction.deserialize(txBytes);
-            const signedTx = await provider.signTransaction(vTx);
-            const serialized = signedTx.serialize();
-            signedBase64 = btoa(String.fromCharCode(...serialized));
-          }
-        }
-
-        const x402SolPayload = {
-          x402Version: 2,
-          scheme: "exact",
-          network: SOLANA_CAIP2,
-          accepted: {
-            scheme: "exact",
-            network: SOLANA_CAIP2,
-            asset: SOLANA_USDC_MINT,
-            amount: "10000",
-            payTo: SOLANA_MERCHANT,
-            maxTimeoutSeconds: 300,
-            extra: { name: "USD Coin (Solana)", version: "2", feePayer: PAYAI_FEE_PAYER }
-          },
-          payload: {
-            transaction: signedBase64,
-            payer: pubkey
-          }
-        };
-
-        const b64Sig = btoa(JSON.stringify(x402SolPayload));
-        const endpoint = detectPaidEndpoint();
-        setStatus("Submitting Solana PAYMENT-SIGNATURE via PayAI Facilitator...");
-
-        const verifyRes = await fetch(`${endpoint}?token_address=${encodeURIComponent(target)}`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            "PAYMENT-SIGNATURE": b64Sig
-          },
-          body: JSON.stringify({
-            token_address: target,
-            token_or_service_address: target,
-            contractAddress: target,
-            content: `Audit target: ${target}`
-          })
-        });
-
-        const data = await verifyRes.json();
-        if (verifyRes.ok) {
-          revealUnlockedReport(data, verifyRes.headers.get("PAYMENT-RESPONSE") || "solana-payai-settled", "SOLANA MAINNET ($0.01 USDC)");
-        } else if (actionData.unlocked_preview) {
-          setStatus("Transaction prepared! Waiting for on-chain Solana confirmation...", "#fbbf24");
-        } else {
-          setStatus("Solana settlement response: " + (data.message || data.error || verifyRes.statusText), "#ef4444");
-        }
-      } catch (err) {
-        setStatus("Solana wallet error: " + (err.message || String(err)), "#ef4444");
-      }
+    async function unlockWithSolana() {
+      setStatus("Solana mint inspection is available in the free preview. Full Solana buy/sell simulation is not implemented, so this page will not request payment for it.", "#fbbf24");
     }
 
     // Deep-link support: /?token=<address_or_mint> or /?url=<target_url>

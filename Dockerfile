@@ -15,11 +15,15 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=4020
+ENV X402_FULFILLMENT_DIR=/app/data/x402
 
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/public ./public
+
+# Writable even when running as node; mount /app/data on a persistent volume in production.
+RUN mkdir -p /app/data/x402 && chown -R node:node /app/data
 
 # Run as non-root user
 USER node
