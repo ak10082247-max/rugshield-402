@@ -16,3 +16,6 @@ mcp-publisher.exe
 deliveries.jsonl
 __pycache__/
 *.pyc
+scripts/check_sol_buyer.mjs
+scripts/get_buyer_bal.ts
+scripts/run_active_m2m_pulse.ts
