@@ -2,7 +2,7 @@ services:
   - type: web
     name: rugshield-402
     runtime: docker
-    plan: free
+    plan: starter
     healthCheckPath: /health
     envVars:
       - key: MERCHANT_ADDRESS
