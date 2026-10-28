@@ -4,7 +4,13 @@ services:
     runtime: docker
     plan: starter
     healthCheckPath: /health
+    disk:
+      name: rug-payment-state
+      mountPath: /app/state
+      sizeGB: 1
     envVars:
+      - key: X402_FULFILLMENT_DIR
+        value: /app/state/fulfillments
       - key: MERCHANT_ADDRESS
         value: "0x80E0Ae84679b7f11bE171DaADd492FBECf628cd6"
       - key: SOLANA_MERCHANT_ADDRESS
