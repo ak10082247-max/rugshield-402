@@ -10,7 +10,9 @@ import { scanSolanaToken, SolanaScanError } from "../src/services/solana_scan.js
 import { simulateBuySell } from "../src/services/swap_simulation.js";
 import { offlineSolanaTransaction, offlineBaseAuthorization } from "./offline_fixtures.js";
 import { authenticateSolanaTransaction } from "../src/middleware/solana_authorization.js";
-import { tokenScreener, liquidityLockEvidence } from "../src/services/evidence.js";
+import { tokenScreener, liquidityLockEvidence, holderConcentration } from "../src/services/evidence.js";
+import { readScanInput } from "../src/services/scan_input.js";
+import { PreviewBudget } from "../src/services/preview_budget.js";
 const OFFLINE_TRANSACTIONS: string[] = Array.from({length:5},(_,index)=>offlineSolanaTransaction(index).transaction);
 const canonicalBuyer = authenticateSolanaTransaction(OFFLINE_TRANSACTIONS[0]).payer;
 const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
@@ -54,6 +56,12 @@ test("Opting out of simulation does not execute simulator or manufacture zero ta
   const result=await scanToken({token_address:USDC,simulate_sell:false},{client:metadataClient(),fetch:(async()=>json({},503)) as any,simulate:async()=>{throw Error("must not execute")}});
   assert.equal(result.simulation_status,"not_requested"); assert.equal(result.liquidity_usd,null); assert.equal(result.buy_tax_bps,null);
 });
+
+test("An empty market-provider index is unknown liquidity rather than an on-chain zero",async()=>{
+ const base=await scanToken({token_address:USDC,simulate_sell:false},{client:metadataClient(),fetch:(async()=>json({pairs:[]})) as any});
+ assert.equal(base.liquidity_usd,null);assert.equal((base.evidence.liquidity as any).status,"unavailable");
+ const sol=await scanSolanaToken(SOL_USDC,{rpcUrls:["https://one.test"],fetch:rpcFetch([{result:{context:{slot:123},value:MINT}}])});assert.equal(sol.liquidity_usd,null);assert.equal(sol.evidence.liquidity.status,"unavailable");
+});
 test("Solana rate limits and JSON-RPC errors fail over to a valid parsed mint", async()=>{
   for(const failure of [json({error:"rate limit"},429),{error:{code:-32005,message:"overloaded"}}]){
     const result=await scanSolanaToken(SOL_USDC,{rpcUrls:["https://one.test","https://two.test"],fetch:rpcFetch([failure,{result:{context:{slot:123},value:MINT}}])});
@@ -69,6 +77,49 @@ test("Solana distinguishes RPC errors, malformed results and one uncertain null 
 test("Solana non-mainnet provider cannot contribute false evidence",async()=>{
   await assert.rejects(scanSolanaToken(SOL_USDC,{rpcUrls:["https://devnet.test"],fetch:(async()=>json({result:"devnet-genesis"})) as any}),(e:any)=>e.code==="RPC_UNAVAILABLE");
 });
+
+test("Malformed parsed Solana accounts fail over; duplicate providers do not prove absence", async()=>{
+  const result = await scanSolanaToken(SOL_USDC, { rpcUrls:["https://one.test","https://two.test"], fetch:rpcFetch([{result:{context:{slot:1},value:{owner:MINT.owner,data:{}}}},{result:{context:{slot:2},value:MINT}}]) });
+  assert.equal(result.evidence.mint.slot,2);
+  await assert.rejects(scanSolanaToken(SOL_USDC,{rpcUrls:["https://one.test","https://one.test"],fetch:rpcFetch([{result:{context:{slot:1},value:null}}])}),(e:any)=>e.code==="RPC_UNAVAILABLE");
+  const malformed = { ...MINT, data:{ parsed:{type:"mint",info:{...MINT.data.parsed.info,mintAuthority:"not-a-public-key"}}} };
+  await assert.rejects(scanSolanaToken(SOL_USDC,{rpcUrls:["https://one.test"],fetch:rpcFetch([{result:{context:{slot:1},value:malformed}}])}),(e:any)=>e.code==="RPC_UNAVAILABLE");
+});
+
+test("Scan input requires explicit metadata opt-out, valid booleans and consistent selectors",async()=>{
+  const input=(body:any, query:Record<string,string>={})=>readScanInput({req:{method:"POST",json:async()=>body,query:(key:string)=>query[key]}});
+  assert.equal((await input({token_address:SOL_USDC})).simulate,true);
+  assert.equal((await input({token_address:SOL_USDC,simulate_sell:false})).simulate,false);
+  assert.equal((await input({token_address:USDC}, {simulate_sell:"false"})).simulate,false);
+  for(const body of [null,[],"x",{token_address:USDC,simulate_sell:"false"},{token_address:USDC,chain:"base",chain_id:1}]) await assert.rejects(input(body));
+  await assert.rejects(input({token_address:USDC},{simulate_sell:"banana"}));
+  await assert.rejects(input({token_address:USDC,simulate_sell:true},{simulate_sell:"false"}));
+  await assert.rejects(input({token_address:USDC,chain:"base"},{chain:"solana"}));
+  await assert.rejects(input({token_address:USDC,address:SOL_USDC}));
+  await assert.rejects(input({token_address:USDC},{target:SOL_USDC}));
+});
+
+test("Public preview budget coalesces concurrent work, preserves evidence age and bounds acquisition",async()=>{
+  let now=100_000, calls=0; const budget=new PreviewBudget(()=>now,1,2,5_000,2);
+  let release!:()=>void; const ready=new Promise<void>(resolve=>{release=resolve;});
+  const work=async()=>{calls++;await ready;return {timestamp:now,items:["original"]};};
+  const a=budget.acquire("token",work);const b=budget.acquire("token",work);
+  await assert.rejects(budget.acquire("other",async()=>({timestamp:now,items:[]})),/PREVIEW_BUDGET_EXHAUSTED/);
+  release();const first=await a;const duplicate=await b;assert.equal(calls,1);first.items.push("mutation");assert.deepEqual(duplicate.items,["original"]);
+  now+=1_000;const cached=await budget.acquire("token",work);assert.equal(cached.timestamp,100_000);assert.deepEqual(cached.items,["original"]);assert.equal(calls,1);
+  now+=5_000;await budget.acquire("token",async()=>({timestamp:now,items:[]}));
+  await assert.rejects(budget.acquire("third",async()=>({timestamp:now,items:[]})),/PREVIEW_BUDGET_EXHAUSTED/);
+  now+=60_000;await budget.acquire("third",async()=>({timestamp:now,items:[]}));
+  const failureBudget=new PreviewBudget();let failures=0;for(let i=0;i<2;i++)await assert.rejects(failureBudget.acquire("failed",async()=>{failures++;throw Error("provider failure");}));assert.equal(failures,2);
+});
+
+test("Holder evidence sorts actual raw accounts, identifies separate sources and rejects duplicate/over-supply rows",async()=>{
+  const other="11111111111111111111111111111111";
+  const query=(accounts:any[])=>async(method:string)=>method==="getTokenLargestAccounts"?{provider:"https://accounts.test",result:{context:{slot:100},value:accounts}}:{provider:"https://supply.test",result:{context:{slot:101},value:{amount:"100"}}};
+  const result=await holderConcentration(SOL_USDC,query([{address:SOL_USDC,amount:"10"},{address:other,amount:"20"}]));
+  assert.equal(result.token_accounts[0].amount_raw,"20");assert.equal(result.top_10_token_accounts_pct,30);assert.equal(result.evidence.supply_provider,"https://supply.test");assert.equal(result.evidence.slot_consistency,"different_slots_not_atomic");
+  for(const rows of [[{address:other,amount:"10"},{address:other,amount:"10"}],[{address:other,amount:"101"}],[{address:other,amount:"80"},{address:SOL_USDC,amount:"80"}]])await assert.rejects(holderConcentration(SOL_USDC,query(rows)));
+});
 test("LP evidence reads actual burn balances at one block without inventing locks or unlock time",async()=>{
   const calls:any[]=[];const client:any={getChainId:async()=>8453,getBlockNumber:async()=>100n,readContract:async(x:any)=>{calls.push(x);if(x.functionName==="getPair")return "0x2222222222222222222222222222222222222222";if(x.functionName==="totalSupply")return 1000n;return x.args[0].endsWith("dEaD")?100n:10n;}};
   const result=await liquidityLockEvidence(USDC,client);assert.equal(result.burn_address_lp_pct,11);assert.equal(result.lp_locked_pct,null);assert.equal(result.is_rug_proof,null);assert.equal(result.unlock_timestamp,null);assert.ok(calls.every(x=>x.blockNumber===100n));
@@ -82,11 +133,11 @@ test("Token screener binds chain and queried base token without fixed smart-mone
 const TRADER="0x1111111111111111111111111111111111111111";
 const ROUTER="0x4752ba5dbc23f44d87826276bf6fd6b1c372ad24";
 const uint=(n:bigint)=>({status:"0x1",returnData:encodeAbiParameters(parseAbiParameters("uint256"),[n]),logs:[]});
-const quote=(n:bigint)=>({status:"0x1",returnData:encodeAbiParameters(parseAbiParameters("uint256[]"),[[1n,n]]),logs:[]});
+const quote=(n:bigint,input=1_000_000_000_000_000n)=>({status:"0x1",returnData:encodeAbiParameters(parseAbiParameters("uint256[]"),[[input,n]]),logs:[]});
 const ok=()=>({status:"0x1",returnData:"0x",logs:[]});
 function simulationClient(){ return { getChainId:async()=>8453,readContract:async(x:any)=>x.functionName==="factory"?"0x8909Dc15e40173Ff4699343b6eB8132c65e18eC6":x.functionName==="WETH"?"0x4200000000000000000000000000000000000006":"0x2222222222222222222222222222222222222222",getBlock:async()=>({number:100n,timestamp:1000n,hash:"0x"+"a".repeat(64)}) } as any; }
 function simulatedResults(sellFail=false,missingTransfer=false){const sold=ok(); if(sellFail)sold.status="0x0";if(!missingTransfer)sold.logs=[{address:"0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",topics:["0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef","0x"+ROUTER.slice(2).padStart(64,"0"),"0x"+TRADER.slice(2).padStart(64,"0")],data:uint(900n).returnData}] as any;
- return [{hash:"0x"+"b".repeat(64),parentHash:"0x"+"a".repeat(64),number:"0x65",timestamp:"0x3f4",calls:[uint(0n),quote(1000n),ok(),uint(900n),ok(),quote(1000n),sold,uint(0n)]}];}
+ return [{hash:"0x"+"b".repeat(64),parentHash:"0x"+"a".repeat(64),number:"0x65",timestamp:"0x3f4",calls:[uint(0n),quote(1000n),ok(),uint(900n),ok(),quote(1000n,900n),sold,uint(0n)]}];}
 test("Stateful V2 simulation measures both balance deltas and genuine simulated ETH proceeds",async()=>{
   const payloads:any[]=[];const result=await simulateBuySell(USDC,100n,{client:simulationClient(),trader:TRADER,request:async(payload)=>{payloads.push(payload);return payload.blockStateCalls[0].calls.length===4?[{hash:"0x"+"b".repeat(64),parentHash:"0x"+"a".repeat(64),number:"0x65",timestamp:"0x3f4",calls:[uint(0n),quote(1000n),ok(),uint(900n)]}]:simulatedResults();}});
   assert.equal(result.status,"passed");assert.equal(result.buy_tax_bps,1000);assert.equal(result.sell_tax_bps,1000);
@@ -97,6 +148,16 @@ test("Failed sell, missing proceeds and RPC unsupported remain inconclusive",asy
   const result=await simulateBuySell(USDC,100n,{client:simulationClient(),trader:TRADER,request:async(payload)=>{if(mode==="unsupported")throw Error("method unsupported");return payload.blockStateCalls[0].calls.length===4?[{hash:"0x"+"b".repeat(64),parentHash:"0x"+"a".repeat(64),number:"0x65",timestamp:"0x3f4",calls:[uint(0n),quote(1000n),ok(),uint(900n)]}]:simulatedResults(mode==="failed",mode==="missing");}});
   assert.equal(result.status,"inconclusive");assert.equal(result.sell_tax_bps,null);
  }
+});
+
+test("Simulation refuses quotes acquired for a different buy or sell amount",async()=>{
+  for(const wrongLeg of ["buy","sell"]){
+    const result=await simulateBuySell(USDC,100n,{client:simulationClient(),trader:TRADER,request:async(payload)=>{
+      if(payload.blockStateCalls[0].calls.length===4)return [{hash:"0x"+"b".repeat(64),parentHash:"0x"+"a".repeat(64),number:"0x65",timestamp:"0x3f4",calls:[uint(0n),quote(1000n,wrongLeg==="buy"?1n:1_000_000_000_000_000n),ok(),uint(900n)]}];
+      const results=simulatedResults();results[0].calls[5]=quote(1000n,1n);return results;
+    }});
+    assert.equal(result.status,"inconclusive");assert.equal(result.sell_tax_bps,null);
+  }
 });
 
 test("Stateful simulation rejects unbound parent blocks and missing envelopes",async()=>{
@@ -158,6 +219,18 @@ test("Paid pipeline acquires before settlement, retains purchased result and blo
   assert.equal(response.status,200);assert.equal((await response.json() as any).evidence.mint.slot,456);assert.equal(settlements,3);
   response=await service.request("http://localhost/v1/scan",{method:"POST",headers:headers("actual-sol-sim-required"),body:JSON.stringify({token_address:SOL_USDC,chain:"solana",simulate_sell:true})});
   assert.equal(response.status,503);assert.equal((await response.json() as any).error,"SWAP_SIMULATION_UNAVAILABLE");assert.equal(settlements,3);
+  response=await service.request("http://localhost/v1/scan",{method:"POST",headers:headers("actual-sol-sim-required"),body:JSON.stringify({token_address:SOL_USDC,chain:"solana"})});
+  assert.equal(response.status,503);assert.equal((await response.json() as any).error,"SWAP_SIMULATION_UNAVAILABLE");assert.equal(settlements,3,"omitted simulation must not purchase a weaker Solana scan");
+  response=await service.request(`http://localhost/v1/scan?token_address=${SOL_USDC}&simulate_sell=banana`,{method:"GET",headers:headers("actual-sol-sim-required")});
+  assert.equal(response.status,400);assert.equal((await response.json() as any).error,"INVALID_SIMULATE_SELL");assert.equal(settlements,3);
+  response=await service.request("http://localhost/v1/scan/preview",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({token_address:SOL_USDC,chain:"base"})});
+  assert.equal(response.status,400);assert.equal((await response.json() as any).error,"CHAIN_MISMATCH_OR_UNSUPPORTED");assert.equal(settlements,3);
+  for(const query of [`token_address=${SOL_USDC}&token_address=${USDC}`,`token_address=${SOL_USDC}&chain=solana&chain=base`]) {
+    response=await service.request(`http://localhost/v1/scan/preview?${query}`);
+    assert.equal(response.status,400);assert.equal((await response.json() as any).error,"DUPLICATE_QUERY_PARAMETER");assert.equal(settlements,3);
+  }
+  response=await service.request(`http://localhost/v1/scan?target=${USDC}`,{method:"POST",headers:headers("actual-sol-sim-required"),body:JSON.stringify({token_address:SOL_USDC,chain:"solana"})});
+  assert.equal(response.status,400);assert.equal((await response.json() as any).error,"CONFLICTING_TARGET_ADDRESSES");assert.equal(settlements,3);
   for(const spec of ENDPOINT_SPECS.filter(x=>x.path!=="/v1/scan")){
     response=await service.request(`http://localhost${spec.path}`,{method:"POST",headers:headers(`incomplete-${spec.path}`),body:JSON.stringify({token_address:SOL_USDC,chain:"solana"})});
     assert.equal(response.status,503,spec.path);assert.equal(settlements,3,spec.path+" must not settle");
@@ -176,7 +249,7 @@ function browserHarness(price="10000") {
  const element=(id:string)=>{if(!elements.has(id))elements.set(id,{value:"",innerText:"",textContent:"",style:{},classList:{add(){},remove(){}}});return elements.get(id);};
  element("targetInput").value=USDC;
  const payer="0x1111111111111111111111111111111111111111";
- const quote={x402Version:2,resource:{url:"https://rug.test/v1/scan"},accepts:[{scheme:"exact",network:"eip155:8453",amount:price,asset:USDC,payTo:"0x73279fa4BadA7CAC888c62CDa4f5c8104765f6f1"}]};
+ const quote={x402Version:2,resource:{url:"https://rug.test/v1/scan"},accepts:[{scheme:"exact",network:"eip155:8453",amount:price,asset:USDC,payTo:"0x80E0Ae84679b7f11bE171DaADd492FBECf628cd6"}]};
  const context:any={console,Uint8Array,Date,URLSearchParams,location:{origin:"https://rug.test"},document:{getElementById:element},sessionStorage:{getItem:(k:string)=>storage.get(k)||null,setItem:(k:string,v:string)=>storage.set(k,v),removeItem:(k:string)=>storage.delete(k)},crypto:{getRandomValues:(bytes:Uint8Array)=>{bytes.fill(7);return bytes;}},atob:(x:string)=>Buffer.from(x,"base64").toString("binary"),btoa:(x:string)=>Buffer.from(x,"binary").toString("base64"),fetch:async(url:string,init:any)=>{requests.push({url,init});if(!init)return new Response("",{status:402,headers:{"PAYMENT-REQUIRED":Buffer.from(JSON.stringify(quote)).toString("base64")}});paidAttempts++;const data={status:"success",buy_tax_bps:null,sell_tax_bps:null,is_honeypot:null,recommendation:"INCONCLUSIVE"};if(paidAttempts===1)return json({error:"SETTLEMENT_PENDING_RECONCILIATION",message:"timeout"},503);return new Response(JSON.stringify(data),{status:200,headers:{"content-type":"application/json","PAYMENT-RESPONSE":Buffer.from(JSON.stringify({success:true,payer,transaction:"0x"+"ab".repeat(32),amount:"10000",network:"eip155:8453",resource:"https://rug.test/v1/scan"})).toString("base64")}});}};
  context.window={location:{hostname:"rug.test",origin:"https://rug.test"},addEventListener(){},ethereum:{request:async(call:any)=>{walletCalls.push(call);if(call.method==="eth_requestAccounts")return[payer];if(call.method==="eth_signTypedData_v4")return"0xOFFLINE_WALLET_STUB";return null;}}};
  vm.createContext(context);vm.runInContext(script,context);

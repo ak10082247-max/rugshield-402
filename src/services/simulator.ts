@@ -38,12 +38,15 @@ export async function scanToken(params: ScanRequest, dependencies: { client?: ty
       if (Array.isArray(body.pairs)) {
         const seen = new Set<string>();
         for (const pair of body.pairs) {
+          if (!pair || typeof pair !== "object") continue;
           const addresses = [pair.baseToken?.address, pair.quoteToken?.address].filter(x => typeof x === "string").map(x => x.toLowerCase());
           if (pair.chainId !== "base" || !addresses.includes(token.toLowerCase()) || typeof pair.pairAddress !== "string" || seen.has(pair.pairAddress.toLowerCase()) || typeof pair.liquidity?.usd !== "number" || !Number.isFinite(pair.liquidity.usd) || pair.liquidity.usd < 0) continue;
           seen.add(pair.pairAddress.toLowerCase());
           pools.push({ address: pair.pairAddress, dex: String(pair.dexId || "unknown"), liquidity_usd: pair.liquidity.usd });
         }
-        liquidity = pools.reduce((sum, pool) => sum + pool.liquidity_usd, 0);
+        // No indexed matching pool is missing market evidence, not proof that the
+        // token has zero on-chain liquidity (a supported RPC pool may still exist).
+        if (pools.length > 0) liquidity = pools.reduce((sum, pool) => sum + pool.liquidity_usd, 0);
       }
     }
   } catch { /* Upstream failure does not establish zero liquidity or trading safety. */ }

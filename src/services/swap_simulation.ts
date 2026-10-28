@@ -59,10 +59,10 @@ export async function simulateBuySell(token: Address, blockNumber: bigint, depen
     if (!result || result.status !== "0x1" || !/^0x[0-9a-fA-F]{64}$/.test(result.returnData || "")) throw new Error("Invalid uint result");
     return BigInt(result.returnData);
   };
-  const quote = (result: any) => {
+  const quote = (result: any, expectedInput: bigint) => {
     if (!result || result.status !== "0x1") throw new Error("Quote failed");
     const amounts = decodeFunctionResult({ abi: routerAbi, functionName: "getAmountsOut", data: result.returnData });
-    if (amounts.length !== 2 || amounts[1] <= 0n) throw new Error("Invalid quote");
+    if (amounts.length !== 2 || amounts[0] !== expectedInput || amounts[1] <= 0n) throw new Error("Invalid or input-unbound quote");
     return amounts[1];
   };
   const provenance = { method: "eth_simulateV1", network: "eip155:8453", parent_block_number: blockNumber.toString(), parent_block_hash: block.hash, router: ROUTER, factory: FACTORY, pool: pair, trader, input_wei: amount.toString(), input_eth: "0.001", path, overrides: "only virtual trader ETH balance and nonce; no token storage or code overrides", scope: "one pool, one size, one fresh virtual trader; excludes future behavior and global token safety" };
@@ -77,7 +77,7 @@ export async function simulateBuySell(token: Address, blockNumber: bigint, depen
     if (!Array.isArray(initial) || initial.length !== 4 || initial.some((item: any) => item.status !== "0x1")) return inconclusive("BUY_SIMULATION_FAILED_OR_UNSUPPORTED", provenance);
     if (uint(initial[0]) !== 0n) return inconclusive("VIRTUAL_TRADER_HAS_EXISTING_TOKEN_BALANCE", provenance);
     const bought = uint(initial[3]);
-    const expectedBuy = quote(initial[1]);
+    const expectedBuy = quote(initial[1], amount);
     if (bought <= 0n || bought > expectedBuy) return inconclusive("UNEXPECTED_BUY_BALANCE_DELTA", provenance);
     const approve = call(token, encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [ROUTER, bought] }));
     const sellQuote = call(ROUTER, encodeFunctionData({ abi: routerAbi, functionName: "getAmountsOut", args: [bought, [token, CONFIG.wethAddress]] }));
@@ -87,8 +87,8 @@ export async function simulateBuySell(token: Address, blockNumber: bigint, depen
     if (!validEnvelope(full)) return inconclusive("SIMULATION_BLOCK_ENVELOPE_MISMATCH", provenance);
     const results = full?.[0]?.calls;
     if (!Array.isArray(results) || results.length !== 8 || results.some((item: any) => item.status !== "0x1")) return inconclusive("SELL_OR_APPROVAL_SIMULATION_FAILED_OR_UNSUPPORTED", { ...provenance, calls: results ?? null });
-    if (uint(results[0]) !== 0n || uint(results[3]) !== bought || quote(results[1]) !== expectedBuy || uint(results[7]) !== 0n) return inconclusive("STATEFUL_SIMULATION_BALANCE_MISMATCH", provenance);
-    const expectedSell = quote(results[5]);
+    if (uint(results[0]) !== 0n || uint(results[3]) !== bought || quote(results[1], amount) !== expectedBuy || uint(results[7]) !== 0n) return inconclusive("STATEFUL_SIMULATION_BALANCE_MISMATCH", provenance);
+    const expectedSell = quote(results[5], bought);
     let received = 0n;
     for (const log of results[6].logs || []) {
       if (log.address?.toLowerCase() === ETH_LOG && log.topics?.[0]?.toLowerCase() === TRANSFER &&

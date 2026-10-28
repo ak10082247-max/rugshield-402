@@ -64,7 +64,7 @@ export async function executeRugShieldScan(
   if (res.status === 402) {
     const challenge = await res.json().catch(() => ({}));
     throw new Error(
-      `RugShield 402 Payment Required: 0.005 USDC to ${challenge.payTo || "0x73279fa4BadA7CAC888c62CDa4f5c8104765f6f1"} on Base. Facilitator: ${challenge.facilitator || "coinbase-cdp"}.`
+      `RugShield 402 Payment Required: 0.005 USDC to ${challenge.payTo || "0x80E0Ae84679b7f11bE171DaADd492FBECf628cd6"} on Base. Facilitator: ${challenge.facilitator || "coinbase-cdp"}.`
     );
   }
 

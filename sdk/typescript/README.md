@@ -45,7 +45,7 @@ if (await shield.isSafeToSwap(targetTokenAddress)) {
 
 - **Sub-50ms Heuristic & State Override Simulation**: Simulates swap orders on Base Mainnet via state overrides to calculate exact buy/sell taxes without relying on stale third-party indexers.
 - **DEX LP Token Lock Verification**: Audits liquidity locks on Aerodrome, Uncx, and Team.Finance.
-- **Client-Side Spend Safety Rails**: Automatically verifies the recipient merchant address (`0x73279fa4BadA7CAC888c62CDa4f5c8104765f6f1`), asset (Base USDC), and enforces a maximum spending ceiling before signing payments.
+- **Client-Side Spend Safety Rails**: Automatically verifies the recipient merchant address (`0x80E0Ae84679b7f11bE171DaADd492FBECf628cd6`), asset (Base USDC), and enforces a maximum spending ceiling before signing payments.
 - **Dual Settlement Ready**: Compatible with Base Mainnet and Solana SPL USDC.
 
 ---

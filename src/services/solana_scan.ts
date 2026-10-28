@@ -8,7 +8,7 @@ const DEFAULT_RPCS = ["https://api.mainnet-beta.solana.com", "https://solana-rpc
 const MAINNET_GENESIS = "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d";
 
 export async function querySolanaRpc(method: string, params: unknown[], request: typeof fetch = fetch) {
-  const urls = process.env.SOLANA_RPC_URLS?.split(",").map(x => x.trim()).filter(Boolean) || DEFAULT_RPCS;
+  const urls = [...new Set(process.env.SOLANA_RPC_URLS?.split(",").map(x => x.trim()).filter(Boolean) || DEFAULT_RPCS)];
   for (const url of urls) {
     try {
       const call = async (name: string, args: unknown[]) => {
@@ -46,7 +46,7 @@ export async function scanSolanaToken(
 ) {
   if (!isSolanaMintAddress(token)) throw new SolanaScanError("INVALID_TOKEN_ADDRESS", "Expected a 32-byte base58 Solana mint", 400);
   const request = options.fetch ?? fetch;
-  const rpcUrls = options.rpcUrls ?? (process.env.SOLANA_RPC_URLS?.split(",").map(x => x.trim()).filter(Boolean) || DEFAULT_RPCS);
+  const rpcUrls = [...new Set(options.rpcUrls ?? (process.env.SOLANA_RPC_URLS?.split(",").map(x => x.trim()).filter(Boolean) || DEFAULT_RPCS))];
   let account: any;
   let contextSlot: number | undefined;
   let nullResponses = 0;
@@ -62,19 +62,21 @@ export async function scanSolanaToken(
       });
       if (!response.ok) continue;
       const body: any = await response.json();
-      if (body.error || !body.result || !Object.hasOwn(body.result, "value") || !Number.isInteger(body.result.context?.slot)) continue;
+      if (body.error || !body.result || !Object.hasOwn(body.result, "value") || !Number.isSafeInteger(body.result.context?.slot) || body.result.context.slot < 0) continue;
       if (body.result.value === null) { nullResponses++; continue; }
       const candidate = body.result.value;
       // A malformed provider response must not become a false "mint missing" or a false successful analysis.
       if (!TOKEN_PROGRAMS.has(candidate.owner) || candidate.data?.parsed?.type !== "mint") {
-        if (typeof candidate.owner === "string" && candidate.data !== undefined) {
+        // Only a complete, parsed non-mint account establishes wrong account type.
+        // An incomplete/malformed RPC payload must fail over instead of falsely rejecting a real mint.
+        if (isSolanaMintAddress(candidate.owner) && typeof candidate.data?.parsed?.type === "string" && candidate.data.parsed.info && typeof candidate.data.parsed.info === "object") {
           throw new SolanaScanError("NOT_A_TOKEN_MINT", "Target account is not a supported SPL token mint", 400);
         }
         continue;
       }
       const info = candidate.data.parsed.info;
       if (!info || !Number.isInteger(info.decimals) || info.decimals < 0 || info.decimals > 255 || typeof info.supply !== "string" || !/^\d+$/.test(info.supply) ||
-          !(info.mintAuthority === null || typeof info.mintAuthority === "string") || !(info.freezeAuthority === null || typeof info.freezeAuthority === "string") || info.isInitialized !== true) continue;
+          !(info.mintAuthority === null || isSolanaMintAddress(info.mintAuthority)) || !(info.freezeAuthority === null || isSolanaMintAddress(info.freezeAuthority)) || info.isInitialized !== true) continue;
       account = candidate; contextSlot = body.result.context.slot; source = new URL(rpc).origin; break;
     } catch (error) {
       if (error instanceof SolanaScanError) throw error;
@@ -98,13 +100,14 @@ export async function scanSolanaToken(
       if (Array.isArray(data.pairs)) {
         const seen = new Set<string>();
         for (const pair of data.pairs) {
+          if (!pair || typeof pair !== "object") continue;
           if (pair.chainId !== "solana" || (pair.baseToken?.address !== token && pair.quoteToken?.address !== token) ||
               typeof pair.pairAddress !== "string" || seen.has(pair.pairAddress) || typeof pair.liquidity?.usd !== "number" ||
               !Number.isFinite(pair.liquidity.usd) || pair.liquidity.usd < 0) continue;
           seen.add(pair.pairAddress);
           pools.push({ address: pair.pairAddress, dex: String(pair.dexId || "unknown"), liquidity_usd: pair.liquidity.usd });
         }
-        liquidityUsd = pools.reduce((sum, pair) => sum + pair.liquidity_usd, 0);
+        if (pools.length > 0) liquidityUsd = pools.reduce((sum, pair) => sum + pair.liquidity_usd, 0);
       }
     }
   } catch { /* Mint evidence remains usable; liquidity stays unknown, not zero. */ }

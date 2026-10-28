@@ -6,8 +6,10 @@ import { CONFIG, AGENT_CONTINUATION, ENDPOINT_SPECS, ENDPOINT_MAP } from "./conf
 import { x402Middleware, X402_METRICS } from "./middleware/x402.js";
 import { deliveryRecorderMiddleware, getRecentDeliveries, getPaidDeliveries } from "./middleware/delivery_recorder.js";
 import { scanToken } from "./services/simulator.js";
-import { scanSolanaToken, SolanaScanError, isSolanaMintAddress } from "./services/solana_scan.js";
+import { scanSolanaToken, SolanaScanError } from "./services/solana_scan.js";
 import { tokenScreener, holderConcentration, walletBalances, liquidityLockEvidence } from "./services/evidence.js";
+import { readScanInput } from "./services/scan_input.js";
+import { PreviewBudget } from "./services/preview_budget.js";
 import { startHeartbeat } from "./services/heartbeat.js";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
@@ -630,60 +632,24 @@ app.post("/mcp", async (c) => {
 // 6 PAID ENDPOINTS (POST & GET, Pre-warmed <50ms Execution)
 // ==============================================================================
 
-// Helper for extracting token address
-async function extractTokenAddress(c: any): Promise<string> {
-  let body: any = {};
-  if (["POST", "PUT"].includes(c.req.method)) { try { body = await c.req.json(); } catch {} }
-  for (const key of ["token_address", "address", "token", "target"]) {
-    if (Object.hasOwn(body, key)) return typeof body[key] === "string" ? body[key].trim() : "";
-  }
-  for (const key of ["token_address", "address", "token", "target"]) {
-    const value = c.req.query(key); if (value !== undefined) return value.trim();
-  }
-  return "";
-}
+const invalidScanInput = (c: any, error: any) => c.json({ status: "error", error: error.code || "INVALID_REQUEST", message: error.message, payment_collected: false }, 400);
+const previewBudget = new PreviewBudget();
 
 // 1. /v1/scan ($0.010 USDC)
 const handleScan = async (c: any) => {
-  const token = await extractTokenAddress(c);
-  const isEvm = token.startsWith("0x") && token.length === 42 && /^0x[a-fA-F0-9]{40}$/.test(token);
-  const isSolana = isSolanaMintAddress(token);
-
-  if (!isEvm && !isSolana) {
-    return c.json({
-      status: "error",
-      token_address: token,
-      error: "Invalid token address format. Must be a 42-char 0x EVM address or 32-44 char Solana base58 mint.",
-      is_honeypot: null,
-      simulation_status: "failed",
-      verdict: "INVALID_TOKEN_ADDRESS",
-      timestamp: Math.floor(Date.now() / 1000),
-      agent_continuation: AGENT_CONTINUATION,
-    }, 400);
-  }
-
-  let options: any = {};
-  if (c.req.method === "POST") { try { options = await c.req.json(); } catch {} }
-  const simulate = isSolana
-    ? (c.req.method === "GET" ? c.req.query("simulate_sell") === "true" : options.simulate_sell === true)
-    : (c.req.method === "GET" ? c.req.query("simulate_sell") !== "false" : options.simulate_sell !== false);
-  const chain = isSolana ? "solana" : "base";
-  const requestedChain = options.chain ?? options.chain_id ?? c.req.query("chain") ?? c.req.query("chain_id");
-  if (requestedChain !== undefined) {
-    const normalized = String(requestedChain).toLowerCase().trim();
-    const base = ["base", "8453", "eip155:8453"].includes(normalized);
-    const solana = ["solana", CONFIG.solanaNetwork.toLowerCase(), "5eykt4usfv8p8njdtrepy1vzqkqzkvdp"].includes(normalized);
-    if ((!base && !solana) || (base && isSolana) || (solana && isEvm)) return c.json({ status: "error", error: "CHAIN_MISMATCH_OR_UNSUPPORTED", payment_collected: false }, 400);
-  }
-  if (options.simulate_sell !== undefined && typeof options.simulate_sell !== "boolean") return c.json({ status: "error", error: "INVALID_SIMULATE_SELL", payment_collected: false }, 400);
+  let input;
+  try { input = await readScanInput(c); } catch (error) { return invalidScanInput(c, error); }
+  const { token, chain, simulate } = input;
 
   if (chain === "solana") {
+    // This capability cannot be fulfilled yet. Avoid provider costs and quote expiry
+    // for a request which must not settle regardless of the mint's metadata.
+    if (simulate) return c.json({ status: "error", error: "SWAP_SIMULATION_UNAVAILABLE", chain, token_address: token, is_honeypot: null, simulation_status: "not_performed", message: "Solana buy/sell execution has not been implemented. No payment collected. Explicit simulate_sell:false requests mint inspection only.", payment_collected: false }, 503);
     let solanaScan;
     try { solanaScan = await scanSolanaToken(token); } catch (error) {
       const err = error as SolanaScanError;
       return c.json({ status: "error", error: err.code || "RPC_UNAVAILABLE", message: err.message, chain: "solana", token_address: token, is_honeypot: null }, err.httpStatus || 503);
     }
-    if (simulate) return c.json({ ...solanaScan, status: "error", error: "SWAP_SIMULATION_UNAVAILABLE", message: "Mint inspection succeeded; Solana buy/sell execution has not been implemented. No payment collected.", payment_collected: false }, 503);
     return c.json(solanaScan, 200);
   }
 
@@ -711,42 +677,29 @@ app.get("/v1/scan", handleScan);
 
 // Free Zero-Wallet Preview Endpoint for Butler Skills and Developers
 const handleScanPreview = async (c: any) => {
-  const token = await extractTokenAddress(c);
-  const isEvm = token.startsWith("0x") && token.length === 42 && /^0x[a-fA-F0-9]{40}$/.test(token);
-  const isSolana = isSolanaMintAddress(token);
-
-  if (!isEvm && !isSolana) {
-    return c.json({
-      status: "error",
-      preview: true,
-      token_address: token,
-      error: "Invalid token address format. Must be a 42-char 0x EVM address or 32-44 char Solana base58 mint.",
-      is_honeypot: null,
-      simulation_status: "failed",
-      verdict: "INVALID_TOKEN_ADDRESS",
-      timestamp: Math.floor(Date.now() / 1000),
-      agent_continuation: AGENT_CONTINUATION,
-    }, 400);
-  }
-
-  const chain = isSolana ? "solana" : "base";
-
+  let input;
+  try { input = await readScanInput(c); } catch (error) { return invalidScanInput(c, error); }
+  const { token, chain } = input;
+  c.header("Cache-Control", "no-store");
+  c.header("X-Preview-Max-Age-Seconds", "5");
 
   if (chain === "solana") {
     let solanaScan;
-    try { solanaScan = await scanSolanaToken(token); } catch (error) {
+    try { solanaScan = await previewBudget.acquire(`solana:${token}`, () => scanSolanaToken(token)); } catch (error) {
       const err = error as SolanaScanError;
+      if (err.message === "PREVIEW_BUDGET_EXHAUSTED") { c.header("Retry-After", "60"); return c.json({ status: "error", error: "PREVIEW_RATE_LIMITED", payment_collected: false }, 429); }
       return c.json({ status: "error", error: err.code || "RPC_UNAVAILABLE", message: err.message, chain: "solana", token_address: token, is_honeypot: null }, err.httpStatus || 503);
     }
     return c.json({ ...solanaScan, preview: true }, solanaScan.status === "success" ? 200 : 400);
   }
 
   try {
-    const scanResult: any = await scanToken({ token_address: token, chain_id: 8453, simulate_sell: false });
+    const scanResult: any = await previewBudget.acquire(`base:${token.toLowerCase()}`, () => scanToken({ token_address: token, chain_id: 8453, simulate_sell: false }));
     scanResult.preview = true;
     scanResult.agent_continuation = AGENT_CONTINUATION;
     return c.json(scanResult, 200);
   } catch (err: any) {
+    if (err.message === "PREVIEW_BUDGET_EXHAUSTED") { c.header("Retry-After", "60"); return c.json({ status: "error", error: "PREVIEW_RATE_LIMITED", payment_collected: false }, 429); }
     return c.json({
       status: "error",
       preview: true,
@@ -766,8 +719,9 @@ app.get("/v1/scan/preview", handleScanPreview);
 
 // Unimplemented acquisition must never be represented by sample data or charged as a completed audit.
 const acquisitionResponse = async (c: any, acquire: (token: string) => Promise<any>) => {
-  const token = await extractTokenAddress(c);
-  if (!/^0x[a-fA-F0-9]{40}$/.test(token) && !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(token)) return c.json({ status: "error", error: "INVALID_ADDRESS", payment_collected: false }, 400);
+  let input;
+  try { input = await readScanInput(c); } catch (error) { return invalidScanInput(c, error); }
+  const { token } = input;
   try { return c.json({ ...await acquire(token), payment_collected: false, error: "ANALYSIS_INCOMPLETE" }, 503); }
   catch (error: any) { return c.json({ status: "error", error: "ACQUISITION_UNAVAILABLE", message: error.message, payment_collected: false }, 503); }
 };
