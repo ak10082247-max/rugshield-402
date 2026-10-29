@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { z } from "zod";
 import { CONFIG, AGENT_CONTINUATION, ENDPOINT_SPECS, ENDPOINT_MAP } from "./config.js";
-import { x402Middleware, X402_METRICS } from "./middleware/x402.js";
+import { x402Middleware, X402_METRICS, getBaseUrl } from "./middleware/x402.js";
 import { deliveryRecorderMiddleware, getRecentDeliveries, getPaidDeliveries } from "./middleware/delivery_recorder.js";
 import { scanToken } from "./services/simulator.js";
 import { scanSolanaToken, SolanaScanError } from "./services/solana_scan.js";
@@ -77,12 +77,6 @@ app.get("/careers/", handleTrustProbe);
 app.get("/jobs", handleTrustProbe);
 app.get("/join", handleTrustProbe);
 app.get("/about", handleTrustProbe);
-
-function getBaseUrl(c: any): string {
-  const host = c.req.header("host") || `localhost:${CONFIG.port}`;
-  const proto = c.req.header("x-forwarded-proto") || (host.includes("onrender.com") ? "https" : "http");
-  return host.includes("onrender.com") ? "https://rugshield-402.onrender.com" : `${proto}://${host}`;
-}
 
 // Root info & Web DApp
 app.get("/", (c) => {
@@ -599,7 +593,10 @@ app.post("/mcp", async (c) => {
         for (const name of ["payment-signature", "x-payment"]) {
           const value = c.req.header(name); if (value) headers.set(name, value);
         }
-        const response = await app.request(new Request(`${getBaseUrl(c)}${route}`, { method: "POST", headers, body: JSON.stringify(args) }));
+        const origin = new URL(getBaseUrl(c));
+        headers.set("host", origin.host);
+        headers.set("x-forwarded-proto", origin.protocol.slice(0, -1));
+        const response = await app.request(new Request(`${origin.origin}${route}`, { method: "POST", headers, body: JSON.stringify(args) }));
         const data = await response.json();
         for (const name of ["payment-required", "payment-response", "x-payment-required"]) {
           const value = response.headers.get(name); if (value) c.header(name, value);

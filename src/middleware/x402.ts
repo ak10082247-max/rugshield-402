@@ -29,6 +29,27 @@ export const X402_METRICS = {
 // 1-Call Freemium Hook cache for trading bots (converts scrapers on call #2)
 const freeTrialIpMap = new Map<string, number>();
 
+export function getBaseUrl(c: any): string {
+  const url = new URL(c.req.url);
+  if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("Invalid request protocol");
+  const host = c.req.header("host");
+  if (host !== undefined) {
+    // Only the actual request authority is accepted. Forwarded host headers
+    // cannot redefine the resource to which an authorization is bound.
+    if (!host || /[^A-Za-z0-9.:[\]-]/.test(host)) throw new Error("Invalid request authority");
+    const authority = new URL(`${url.protocol}//${host}`);
+    if (authority.host !== url.host) throw new Error("Conflicting request authority");
+  }
+  const forwardedProto = c.req.header("x-forwarded-proto")?.toLowerCase();
+  if (forwardedProto !== undefined && forwardedProto !== "http" && forwardedProto !== "https") {
+    throw new Error("Invalid forwarded protocol");
+  }
+  if (url.hostname.toLowerCase().replace(/\.$/, "") === "rugshield-402.onrender.com") {
+    return "https://rugshield-402.onrender.com";
+  }
+  return new URL(`${forwardedProto || url.protocol.slice(0, -1)}://${url.host}`).origin;
+}
+
 const paymentHandler = createMiddleware<{
   Variables: {
     payment?: X402VerificationResult;
@@ -50,6 +71,9 @@ const paymentHandler = createMiddleware<{
   if (c.req.method === "OPTIONS") {
     return c.body(null, 204);
   }
+
+  try { getBaseUrl(c); }
+  catch { return c.json({ error: "INVALID_REQUEST_ORIGIN", payment_collected: false }, 400); }
 
   // Check if this route is one of our paid endpoints
   const path = c.req.path;
@@ -100,9 +124,7 @@ const paymentHandler = createMiddleware<{
 
     const parsed = JSON.parse(payloadStr);
     const fingerprint = await requestFingerprint(c);
-    const resourceHost = c.req.header("host") || `localhost:${CONFIG.port}`;
-    const resourceProto = c.req.header("x-forwarded-proto") || (resourceHost.includes("onrender.com") ? "https" : "http");
-    const canonicalResource = `${resourceHost.includes("onrender.com") ? "https://rugshield-402.onrender.com" : `${resourceProto}://${resourceHost}`}${spec.path}`;
+    const canonicalResource = `${getBaseUrl(c)}${spec.path}`;
     const validateMetadata = (requirements: any) => {
       const accepted = parsed.accepted;
       if (accepted !== undefined) {
@@ -265,10 +287,7 @@ const paymentHandler = createMiddleware<{
       const solanaAuthorization = authenticateSolanaTransaction(txB64);
       const solSigHash = solanaAuthorization.id;
 
-      const host = c.req.header("host") || `localhost:${CONFIG.port}`;
-      const proto = c.req.header("x-forwarded-proto") || (host.includes("onrender.com") ? "https" : "http");
-      const baseUrl = host.includes("onrender.com") ? "https://rugshield-402.onrender.com" : `${proto}://${host}`;
-      const resUrl = `${baseUrl}${spec.path}`;
+      const resUrl = `${getBaseUrl(c)}${spec.path}`;
 
       const solanaRequirements = {
         scheme: "exact",
@@ -485,10 +504,7 @@ const paymentHandler = createMiddleware<{
 
 
     // Direct facilitator settlement; no unauthenticated payment-only relay dependency.
-    const host = c.req.header("host") || `localhost:${CONFIG.port}`;
-    const proto = c.req.header("x-forwarded-proto") || (host.includes("onrender.com") ? "https" : "http");
-    const baseUrl = host.includes("onrender.com") ? "https://rugshield-402.onrender.com" : `${proto}://${host}`;
-    const resUrl = `${baseUrl}${spec.path}`;
+    const resUrl = `${getBaseUrl(c)}${spec.path}`;
 
     const cleanRequirements = {
       scheme: "exact",
@@ -696,10 +712,7 @@ function buildRugShieldTeaser(spec: EndpointPriceSpec, tokAddr: string) {
 
 function return402Challenge(c: any, spec: EndpointPriceSpec, reason?: string) {
   X402_METRICS.challenges++;
-  const host = c.req.header("host") || `localhost:${CONFIG.port}`;
-  const proto = c.req.header("x-forwarded-proto") || (host.includes("onrender.com") ? "https" : "http");
-  const baseUrl = host.includes("onrender.com") ? "https://rugshield-402.onrender.com" : `${proto}://${host}`;
-  const resUrl = `${baseUrl}${spec.path}`;
+  const resUrl = `${getBaseUrl(c)}${spec.path}`;
 
   const challengeId = randomUUID();
   const reqPayload = {
