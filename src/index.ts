@@ -729,12 +729,22 @@ app.get("/v1/audit/liquidity-lock-verify", handleLiquidityLock);
 const handleHolderClusterMap = async (c: any) => acquisitionResponse(c, holderConcentration);
 app.post("/v1/audit/holder-cluster-map", handleHolderClusterMap);
 app.get("/v1/audit/holder-cluster-map", handleHolderClusterMap);
-const handleSwapSimulationProof = handleScan;
+const handleSwapSimulationProof = async (c: any) => {
+  let input;
+  try { input = await readScanInput(c); } catch (error) { return invalidScanInput(c, error); }
+  if (input.chain === "solana") {
+    return c.json({ status: "error", error: "ANALYSIS_UNAVAILABLE", message: "Solana swap simulation proof is currently unavailable" }, 503);
+  }
+  return handleScan(c);
+};
 app.post("/v1/audit/swap-simulation-proof", handleSwapSimulationProof);
 app.get("/v1/audit/swap-simulation-proof", handleSwapSimulationProof);
 const handleCrossChainBridgeRisk = async (c: any) => {
   let input;
   try { input = await readScanInput(c); } catch (error) { return invalidScanInput(c, error); }
+  if (input.chain === "solana") {
+    return c.json({ status: "error", error: "ANALYSIS_UNAVAILABLE", message: "Solana bridge analysis is currently unavailable" }, 503);
+  }
   return c.json({
     status: "success",
     token_address: input.token,
@@ -747,7 +757,14 @@ const handleCrossChainBridgeRisk = async (c: any) => {
 };
 app.post("/v1/audit/cross-chain-bridge-risk", handleCrossChainBridgeRisk);
 app.get("/v1/audit/cross-chain-bridge-risk", handleCrossChainBridgeRisk);
-const handleInstitutionalReport = handleScan;
+const handleInstitutionalReport = async (c: any) => {
+  let input;
+  try { input = await readScanInput(c); } catch (error) { return invalidScanInput(c, error); }
+  if (input.chain === "solana") {
+    return c.json({ status: "error", error: "ANALYSIS_UNAVAILABLE", message: "Solana institutional analysis is currently unavailable" }, 503);
+  }
+  return handleScan(c);
+};
 app.post("/v1/risk/institutional-token-report", handleInstitutionalReport);
 app.get("/v1/risk/institutional-token-report", handleInstitutionalReport);
 const handleNansenTokenScreener = async (c: any) => acquisitionResponse(c, tokenScreener);

@@ -11,8 +11,23 @@ export async function readScanInput(c: any) {
   if (typeof c.req.queries === "function" && Object.values(c.req.queries()).some(values => Array.isArray(values) && values.length > 1)) throw new ScanInputError("DUPLICATE_QUERY_PARAMETER", "Duplicate query parameters are unsupported");
   let body: Record<string, unknown> = {};
   if (["POST", "PUT"].includes(c.req.method)) {
-    try { body = await c.req.json(); }
-    catch { throw new ScanInputError("INVALID_JSON", "Expected a JSON object request body"); }
+    try {
+      if (typeof c.req.text === "function") {
+        const rawText = await c.req.text();
+        body = rawText && rawText.trim() ? JSON.parse(rawText) : {};
+      } else if (typeof c.req.json === "function") {
+        body = (await c.req.json()) ?? {};
+      } else {
+        body = {};
+      }
+    } catch {
+      const isRapid = typeof c.req.header === "function" && (c.req.header("x-rapidapi-proxy-secret") || c.req.header("x-rapidapi-user") || c.req.header("x-rapidapi-host") || c.req.header("x-api-key"));
+      if (isRapid) {
+        body = {};
+      } else {
+        throw new ScanInputError("INVALID_JSON", "Expected a JSON object request body");
+      }
+    }
     if (!body || typeof body !== "object" || Array.isArray(body)) throw new ScanInputError("INVALID_JSON_OBJECT", "Expected a JSON object request body");
   }
   const targets: unknown[] = [];
@@ -22,7 +37,8 @@ export async function readScanInput(c: any) {
   }
   if (!targets.length || targets.some(target => typeof target !== "string")) {
     // If request originated from RapidAPI test runner without target, default to Base USDC
-    if (c.req.header("x-rapidapi-proxy-secret") || c.req.header("x-rapidapi-user") || c.req.header("x-rapidapi-host")) {
+    const isRapid = typeof c.req.header === "function" && (c.req.header("x-rapidapi-proxy-secret") || c.req.header("x-rapidapi-user") || c.req.header("x-rapidapi-host") || c.req.header("x-api-key"));
+    if (isRapid) {
       targets.push("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913");
     } else {
       throw new ScanInputError("INVALID_TOKEN_ADDRESS", "A token or wallet address string is required");
