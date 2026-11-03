@@ -7,7 +7,7 @@ import { x402Middleware, X402_METRICS, getBaseUrl } from "./middleware/x402.js";
 import { deliveryRecorderMiddleware, getRecentDeliveries, getPaidDeliveries } from "./middleware/delivery_recorder.js";
 import { scanToken } from "./services/simulator.js";
 import { scanSolanaToken, SolanaScanError } from "./services/solana_scan.js";
-import { tokenScreener, holderConcentration, walletBalances, liquidityLockEvidence } from "./services/evidence.js";
+import { tokenScreener, holderConcentration, walletBalances, liquidityLockEvidence, smartMoneyOrderflow, crossChainBridgeRisk } from "./services/evidence.js";
 import { readScanInput } from "./services/scan_input.js";
 import { PreviewBudget } from "./services/preview_budget.js";
 import { startHeartbeat } from "./services/heartbeat.js";
@@ -733,29 +733,6 @@ const acquisitionResponse = async (c: any, acquire: (token: string) => Promise<a
     return c.json({ status: "error", error: "ACQUISITION_UNAVAILABLE", message: error.message, payment_collected: false }, 503);
   }
 };
-const unavailableAnalysis = (c: any) => {
-  const isRapid = Boolean(c.req.header("x-rapidapi-proxy-secret") || c.req.header("x-rapidapi-user") || c.req.header("x-rapidapi-host") || c.req.header("x-api-key"));
-  if (isRapid) {
-    const token = c.req.query("token") || c.req.query("address") || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-    return c.json({
-      status: "success",
-      fulfillment_complete: true,
-      endpoint: c.req.path,
-      token_address: token,
-      chain: "base",
-      signal: "NEUTRAL",
-      smart_money_activity: {
-        inflow_usd_24h: 125400.50,
-        outflow_usd_24h: 89320.10,
-        netflow_usd_24h: 36080.40,
-        tracked_wallets_active: 8,
-        sentiment: "ACCUMULATION"
-      },
-      message: "Live DEX smart money netflow observed across institutional pools."
-    }, 200);
-  }
-  return c.json({ status: "error", error: "ANALYSIS_UNAVAILABLE", endpoint: c.req.path, message: "Required provider or execution evidence is not available. No payment settlement was attempted.", payment_collected: false }, 503);
-};
 const handleLiquidityLock = async (c: any) => acquisitionResponse(c, liquidityLockEvidence);
 app.post("/v1/audit/liquidity-lock-verify", handleLiquidityLock);
 app.get("/v1/audit/liquidity-lock-verify", handleLiquidityLock);
@@ -772,22 +749,7 @@ const handleSwapSimulationProof = async (c: any) => {
 };
 app.post("/v1/audit/swap-simulation-proof", handleSwapSimulationProof);
 app.get("/v1/audit/swap-simulation-proof", handleSwapSimulationProof);
-const handleCrossChainBridgeRisk = async (c: any) => {
-  let input;
-  try { input = await readScanInput(c); } catch (error) { return invalidScanInput(c, error); }
-  if (input.chain === "solana") {
-    return c.json({ status: "error", error: "ANALYSIS_UNAVAILABLE", message: "Solana bridge analysis is currently unavailable" }, 503);
-  }
-  return c.json({
-    status: "success",
-    token_address: input.token,
-    chain: input.chain,
-    bridge_canonical: true,
-    bridge_type: "Canonical Native Bridge (Base / OP Stack)",
-    cross_chain_risk: "low",
-    message: "Token operates under canonical rollup bridge specifications with no unverified custom bridge wrappers."
-  }, 200);
-};
+const handleCrossChainBridgeRisk = async (c: any) => acquisitionResponse(c, crossChainBridgeRisk);
 app.post("/v1/audit/cross-chain-bridge-risk", handleCrossChainBridgeRisk);
 app.get("/v1/audit/cross-chain-bridge-risk", handleCrossChainBridgeRisk);
 const handleInstitutionalReport = async (c: any) => {
@@ -803,13 +765,13 @@ app.get("/v1/risk/institutional-token-report", handleInstitutionalReport);
 const handleNansenTokenScreener = async (c: any) => acquisitionResponse(c, tokenScreener);
 app.post("/api/v1/token-screener", handleNansenTokenScreener);
 app.get("/api/v1/token-screener", handleNansenTokenScreener);
-const handleNansenSmartMoneyNetflow = unavailableAnalysis;
+const handleNansenSmartMoneyNetflow = async (c: any) => acquisitionResponse(c, smartMoneyOrderflow);
 app.post("/api/v1/smart-money/netflow", handleNansenSmartMoneyNetflow);
 app.get("/api/v1/smart-money/netflow", handleNansenSmartMoneyNetflow);
-const handleNansenSmartMoneyDexTrades = unavailableAnalysis;
+const handleNansenSmartMoneyDexTrades = async (c: any) => acquisitionResponse(c, smartMoneyOrderflow);
 app.post("/api/v1/smart-money/dex-trades", handleNansenSmartMoneyDexTrades);
 app.get("/api/v1/smart-money/dex-trades", handleNansenSmartMoneyDexTrades);
-const handleNansenWhoBoughtSold = unavailableAnalysis;
+const handleNansenWhoBoughtSold = async (c: any) => acquisitionResponse(c, smartMoneyOrderflow);
 app.post("/api/v1/tgm/who-bought-sold", handleNansenWhoBoughtSold);
 app.get("/api/v1/tgm/who-bought-sold", handleNansenWhoBoughtSold);
 const handleNansenHolders = async (c: any) => acquisitionResponse(c, holderConcentration);

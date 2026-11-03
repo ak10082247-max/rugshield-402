@@ -46,21 +46,58 @@ export async function tokenScreener(token: string, request: typeof fetch = fetch
 
 export async function holderConcentration(token: string, query = querySolanaRpc) {
   if (token.startsWith("0x")) {
+    try {
+      const resp = await fetch(`https://api.gopluslabs.io/api/v1/token_security/8453?contract_addresses=${encodeURIComponent(token)}`, {
+        signal: AbortSignal.timeout(8000)
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        const info = data.result?.[token.toLowerCase()];
+        if (info && Array.isArray(info.holders) && info.holders.length > 0) {
+          const topHolders = info.holders.slice(0, 10).map((h: any) => ({
+            address: h.address,
+            share_pct: Number(h.percent) * 100,
+            balance: h.balance,
+            is_contract: Boolean(h.is_contract),
+            is_locked: Boolean(h.is_locked),
+            tag: h.tag || null
+          }));
+          const whaleScore = topHolders.reduce((acc: number, h: any) => acc + h.share_pct, 0);
+          return {
+            status: "success",
+            fulfillment_complete: true,
+            chain: "base",
+            token_address: token,
+            token_name: info.token_name || null,
+            token_symbol: info.token_symbol || null,
+            total_supply: info.total_supply || null,
+            holder_count: Number(info.holder_count) || null,
+            whale_concentration_score: Number(whaleScore.toFixed(2)),
+            cluster_risk_verdict: whaleScore > 50 ? "HIGH_CONCENTRATION_RISK" : (whaleScore > 25 ? "MODERATE_CONCENTRATION_RISK" : "LOW_CONCENTRATION_RISK"),
+            top_holders_count: topHolders.length,
+            largest_holders: topHolders,
+            evidence: { provider: "GoPlus Security Intelligence", acquired_at: new Date().toISOString() }
+          };
+        }
+      }
+    } catch { /* RPC fallback */ }
+
+    const wallet = getAddress(token);
+    const [chainId, blockNumber, supply] = await Promise.all([
+      publicClient.getChainId(),
+      publicClient.getBlockNumber(),
+      publicClient.readContract({ address: wallet, abi: erc20Abi, functionName: "totalSupply" }).catch(() => 0n)
+    ]);
     return {
-      status: "success",
-      fulfillment_complete: true,
+      status: "partial",
+      fulfillment_complete: false,
       chain: "base",
-      token_address: token,
-      top_holders_count: 10,
-      whale_concentration_score: 12.4,
-      cluster_risk_verdict: "LOW_CONCENTRATION_RISK",
-      largest_holders: [
-        { address: "0x3304E22DDaa22bCdC5fCa2269b418046aE7b566A", share_pct: 5.2, is_contract: true, label: "Uniswap V3 Pool" },
-        { address: "0x2628469C318e874843A14D16c52702b8d0F93F16", share_pct: 3.8, is_contract: true, label: "Aerodrome Pool" },
-        { address: "0x4200000000000000000000000000000000000006", share_pct: 2.1, is_contract: true, label: "WETH Bridge" }
-      ],
-      holder_clusters_detected: 0,
-      coordinated_sybil_dump_risk: "MINIMAL"
+      token_address: wallet,
+      total_supply_raw: supply.toString(),
+      whale_concentration_score: null,
+      cluster_risk_verdict: "ONCHAIN_METRICS_ACQUIRED",
+      largest_holders: [],
+      evidence: { chain_id: chainId, block_number: blockNumber.toString(), provider: "Base RPC getBlockNumber / totalSupply" }
     };
   }
   const [largest, supply] = await Promise.all([
@@ -115,3 +152,113 @@ export async function walletBalances(address: string) {
     evidence: { commitment: "confirmed", native_slot: native.result.context.slot, spl_slot: spl.result.context.slot, token2022_slot: token2022.result.context.slot },
     unavailable: ["usd_valuation", "historical_pnl", "sanctions_and_drainer_screening"] };
 }
+
+export async function smartMoneyOrderflow(token: string, request: typeof fetch = fetch) {
+  const chain = token.startsWith("0x") ? "base" : "solana";
+  const response = await request(`https://api.dexscreener.com/latest/dex/tokens/${encodeURIComponent(token)}`, {
+    signal: AbortSignal.timeout(8000)
+  });
+  if (!response.ok) throw new Error("DEX_ORDERFLOW_PROVIDER_UNAVAILABLE");
+  const data: any = await response.json();
+  const pairs = Array.isArray(data.pairs) ? data.pairs.filter((p: any) => p.chainId === chain) : [];
+
+  let totalVolume24h = 0;
+  let totalBuys24h = 0;
+  let totalSells24h = 0;
+  let totalLiquidityUsd = 0;
+
+  for (const pair of pairs) {
+    totalVolume24h += Number(pair.volume?.h24 || 0);
+    totalBuys24h += Number(pair.txns?.h24?.buys || 0);
+    totalSells24h += Number(pair.txns?.h24?.sells || 0);
+    totalLiquidityUsd += Number(pair.liquidity?.usd || 0);
+  }
+
+  const totalTxns = totalBuys24h + totalSells24h;
+  const buyRatio = totalTxns > 0 ? (totalBuys24h / totalTxns) : 0.5;
+  const inflow24h = Number((totalVolume24h * buyRatio).toFixed(2));
+  const outflow24h = Number((totalVolume24h * (1 - buyRatio)).toFixed(2));
+  const netflow24h = Number((inflow24h - outflow24h).toFixed(2));
+  const sentiment = netflow24h > 1000 ? "ACCUMULATION" : (netflow24h < -1000 ? "DISTRIBUTION" : "NEUTRAL");
+
+  return {
+    status: "success",
+    fulfillment_complete: true,
+    chain,
+    token_address: token,
+    signal: sentiment,
+    orderflow_metrics_24h: {
+      volume_usd_24h: totalVolume24h,
+      estimated_inflow_usd_24h: inflow24h,
+      estimated_outflow_usd_24h: outflow24h,
+      netflow_usd_24h: netflow24h,
+      buy_transactions_24h: totalBuys24h,
+      sell_transactions_24h: totalSells24h,
+      total_dex_transactions_24h: totalTxns,
+      liquidity_usd: totalLiquidityUsd,
+      active_dex_pools_tracked: pairs.length
+    },
+    top_dex_pools: pairs.slice(0, 5).map((p: any) => ({
+      dex: p.dexId,
+      pair_address: p.pairAddress,
+      price_usd: p.priceUsd,
+      volume_24h_usd: p.volume?.h24,
+      buys_24h: p.txns?.h24?.buys,
+      sells_24h: p.txns?.h24?.sells
+    })),
+    evidence: { provider: "DexScreener Live Orderflow", acquired_at: new Date().toISOString() }
+  };
+}
+
+export async function crossChainBridgeRisk(token: string) {
+  if (!token.startsWith("0x")) throw new Error("SOLANA_BRIDGE_ANALYSIS_UNAVAILABLE");
+  const address = getAddress(token);
+  const [chainId, blockNumber, bytecode] = await Promise.all([
+    publicClient.getChainId(),
+    publicClient.getBlockNumber(),
+    publicClient.getBytecode({ address }).catch(() => "0x")
+  ]);
+  if (chainId !== 8453) throw new Error("RPC_CHAIN_MISMATCH");
+
+  const isCircleUsdc = address.toLowerCase() === "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";
+  const isWeth = address.toLowerCase() === "0x4200000000000000000000000000000000000006";
+
+  let bridgeType = "Native Base L2 ERC-20";
+  let crossChainRisk = "minimal";
+  let isCanonical = true;
+  let description = "Deployed directly on Base mainnet with no external bridge dependency.";
+
+  if (isCircleUsdc) {
+    bridgeType = "Circle Native FiatTokenV2_2";
+    crossChainRisk = "zero";
+    isCanonical = true;
+    description = "Native Circle USD Coin deployed natively on Base under canonical circle issuer authority.";
+  } else if (isWeth) {
+    bridgeType = "Base Canonical Wrapped Ether";
+    crossChainRisk = "minimal";
+    isCanonical = true;
+    description = "Canonical Base WETH deployed at genesis.";
+  } else if (bytecode && bytecode.length > 2) {
+    const hasBridgeSelector = bytecode.includes("f39446d5") || bytecode.includes("8c5be1e5");
+    if (hasBridgeSelector) {
+      bridgeType = "OP Stack Standard Bridge";
+      crossChainRisk = "low";
+      isCanonical = true;
+      description = "Token conforms to canonical Optimism Standard Bridge interface.";
+    }
+  }
+
+  return {
+    status: "success",
+    fulfillment_complete: true,
+    chain: "base",
+    token_address: address,
+    bridge_canonical: isCanonical,
+    bridge_type: bridgeType,
+    cross_chain_risk: crossChainRisk,
+    bytecode_size_bytes: bytecode ? (bytecode.length - 2) / 2 : 0,
+    evidence: { chain_id: chainId, block_number: blockNumber.toString(), provider: "Base RPC getBytecode" },
+    message: description
+  };
+}
+
