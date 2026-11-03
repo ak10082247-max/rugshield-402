@@ -82,6 +82,16 @@ const paymentHandler = createMiddleware<{
     return next();
   }
 
+  // RapidAPI Gateway & Direct API Key Bypass
+  const rapidSecret = c.req.header("x-rapidapi-proxy-secret");
+  const apiKey = c.req.header("x-api-key") || (c.req.header("authorization")?.startsWith("Bearer ") ? c.req.header("authorization")?.slice(7) : null);
+  const configuredSecret = process.env.RAPIDAPI_PROXY_SECRET || "rapidapi-secret-kurox-2026";
+  const configuredApiKey = process.env.SERVICE_API_KEY || "kurox-master-key-2026";
+  if ((rapidSecret && rapidSecret === configuredSecret) || (apiKey && apiKey === configuredApiKey)) {
+    c.header("X-RapidAPI-Bypass", "active");
+    return next();
+  }
+
   // Check incoming payment headers
   const rawPaymentHeader =
     c.req.header("X-PAYMENT") ||
