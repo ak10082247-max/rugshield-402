@@ -1,3 +1,4 @@
+import { parseTransaction } from "viem";
 import "dotenv/config";
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
@@ -52,6 +53,88 @@ app.get("/health", (c) => {
 });
 
 app.get("/ping", (c) => c.json({ status: "ok" }));
+
+// ============================================================================
+// RUGSHIELD SHIELDED ANTI-RUG RPC PROXY (Base Mainnet)
+// Route: GET /rpc, POST /rpc, POST /v1/rpc
+// Allows any trader or bot to use https://rugshield-402.onrender.com/rpc as their Base RPC
+// ============================================================================
+app.get("/rpc", (c) => {
+  return c.json({
+    service: "RugShield Shielded Anti-Rug RPC",
+    chain: "Base Mainnet (eip155:8453)",
+    status: "active",
+    features: [
+      "In-flight honeypot detection on eth_sendRawTransaction",
+      "Automatic transaction abort for 99% sell tax traps",
+      "Zero-latency passthrough for benign RPC calls"
+    ],
+    setup: {
+      metamask: "Add Custom Network -> RPC URL: https://rugshield-402.onrender.com/rpc -> Chain ID: 8453 -> Symbol: ETH",
+      trading_bot: "Set RPC_URL=https://rugshield-402.onrender.com/rpc in bot config"
+    }
+  });
+});
+
+const rpcHandler = async (c: any) => {
+  try {
+    const body: any = await c.req.json();
+    const { jsonrpc = "2.0", id = 1, method, params = [] } = body;
+
+    // INTERCEPT eth_sendRawTransaction
+    if (method === "eth_sendRawTransaction" && params && params[0]) {
+      const rawTx = params[0];
+      try {
+        const parsed = parseTransaction(rawTx as `0x${string}`);
+        const toAddress = parsed.to?.toLowerCase();
+
+        if (toAddress && toAddress !== "0x0000000000000000000000000000000000000000") {
+          const sim = await scanToken({ token_address: toAddress, simulate_sell: true });
+          if (sim.is_honeypot || (sim.sell_tax_bps && sim.sell_tax_bps > 2000)) {
+            return c.json({
+              jsonrpc,
+              id,
+              error: {
+                code: -32000,
+                message: `RugShield Shielded RPC REJECTED transaction: Target contract (${toAddress}) is a verified HONEYPOT or high-tax trap (Buy: ${(sim.buy_tax_bps || 0) / 100}%, Sell: ${(sim.sell_tax_bps || 0) / 100}%). Funds preserved.`
+              }
+            });
+          }
+        }
+      } catch (parseErr) {
+        // Fall through to upstream node on unparseable tx
+      }
+    }
+
+    // PASSTHROUGH TO UPSTREAM BASE RPC
+    const upstreamRpc = process.env.BASE_RPC_URL || "https://mainnet.base.org";
+    const rpcResp = await fetch(upstreamRpc, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+
+    if (rpcResp.ok) {
+      const json: any = await rpcResp.json();
+      return c.json(json);
+    }
+
+    return c.json({
+      jsonrpc,
+      id,
+      error: { code: -32603, message: "Upstream Base RPC error" }
+    }, 502);
+  } catch (err: any) {
+    return c.json({
+      jsonrpc: "2.0",
+      id: 1,
+      error: { code: -32603, message: err?.message || "Internal RPC proxy error" }
+    }, 500);
+  }
+};
+app.post("/rpc", rpcHandler);
+app.post("/v1/rpc", rpcHandler);
+
 app.get("/version", (c) => {
   const rev = process.env.RENDER_GIT_COMMIT || process.env.GIT_COMMIT || "unknown";
   return c.json({ service: CONFIG.serviceName, version: CONFIG.version, revision: rev, build_revision: rev });
