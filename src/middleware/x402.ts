@@ -760,7 +760,7 @@ function return402Challenge(c: any, spec: EndpointPriceSpec, reason?: string) {
   const x402Pr = {
     x402Version: 2,
     resource: resourceObj,
-    extensions: { bazaar: bazaarExtension },
+    extensions: { discoverable: true, bazaar: bazaarExtension },
     accepts: [
       {
         scheme: "exact",
@@ -827,7 +827,7 @@ function return402Challenge(c: any, spec: EndpointPriceSpec, reason?: string) {
         header_required: "Attach PAYMENT-SIGNATURE with signed authorization to retry",
       },
       resource: resourceObj,
-      extensions: { bazaar: bazaarExtension },
+      extensions: { discoverable: true, bazaar: bazaarExtension },
       accepts: x402Pr.accepts,
       payTo: CONFIG.merchantAddress,
       amount: spec.amountMicroUnits,
