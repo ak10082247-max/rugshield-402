@@ -802,17 +802,10 @@ const acquisitionResponse = async (c: any, acquire: (token: string) => Promise<a
   let input;
   try { input = await readScanInput(c); } catch (error) { return invalidScanInput(c, error); }
   const { token, chain } = input;
-  const isRapid = Boolean(c.req.header("x-rapidapi-proxy-secret") || c.req.header("x-rapidapi-user") || c.req.header("x-rapidapi-host") || c.req.header("x-api-key"));
   try {
     const data = await acquire(token);
-    if (isRapid) {
-      return c.json({ status: "success", fulfillment_complete: true, token_address: token, chain, ...data }, 200);
-    }
-    return c.json({ ...data, payment_collected: false, error: "ANALYSIS_INCOMPLETE" }, 503);
+    return c.json({ status: "success", fulfillment_complete: true, token_address: token, chain, ...data }, 200);
   } catch (error: any) {
-    if (isRapid) {
-      return c.json({ status: "success", fulfillment_complete: true, token_address: token, chain, message: error.message }, 200);
-    }
     return c.json({ status: "error", error: "ACQUISITION_UNAVAILABLE", message: error.message, payment_collected: false }, 503);
   }
 };
