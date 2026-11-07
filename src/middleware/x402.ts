@@ -501,7 +501,7 @@ const paymentHandler = createMiddleware<{
     if (recovered) return recovered;
     // Verify validity window
     const nowSec = BigInt(Math.floor(Date.now() / 1000));
-    if (validBefore <= nowSec || validBefore > nowSec + 300n) {
+    if (validBefore <= nowSec || validBefore > nowSec + 86400n) {
       return return402Challenge(c, spec, "Payment authorization expired");
     }
     if (validAfter > nowSec) {
