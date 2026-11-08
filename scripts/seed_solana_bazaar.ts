@@ -39,12 +39,12 @@ const SOLANA_USDC_MINT = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyT
 const TOKEN_PROGRAM_ID = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
 const SOLANA_MERCHANT = new PublicKey(
-  process.env.SOLANA_MERCHANT_ADDRESS || "3tQ4GthjUMqNsyrb1rZMocMHoNewFQWjDUvHZqWeYuCN"
+  process.env.SOLANA_MERCHANT_ADDRESS || "9wuMysgXwNhtQeqJgGByAiMYc4EjzZ5wUSmnjrrt3ffh"
 );
 
 const BASE_NETWORK = "eip155:8453";
 const BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-const BASE_MERCHANT = "0x73279fa4BadA7CAC888c62CDa4f5c8104765f6f1";
+const BASE_MERCHANT = "0x80E0Ae84679b7f11bE171DaADd492FBECf628cd6";
 
 function findAssociatedTokenAddress(owner: PublicKey, mint: PublicKey): PublicKey {
   const [pda] = PublicKey.findProgramAddressSync(

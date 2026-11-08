@@ -181,12 +181,13 @@ export async function smartMoneyOrderflow(token: string, request: typeof fetch =
   const netflow24h = Number((inflow24h - outflow24h).toFixed(2));
   const sentiment = netflow24h > 1000 ? "ACCUMULATION" : (netflow24h < -1000 ? "DISTRIBUTION" : "NEUTRAL");
 
+  const hasData = pairs.length > 0;
   return {
-    status: "success",
-    fulfillment_complete: true,
+    status: hasData ? "success" : "partial",
+    fulfillment_complete: hasData,
     chain,
     token_address: token,
-    signal: sentiment,
+    signal: hasData ? sentiment : "UNKNOWN",
     orderflow_metrics_24h: {
       volume_usd_24h: totalVolume24h,
       estimated_inflow_usd_24h: inflow24h,
