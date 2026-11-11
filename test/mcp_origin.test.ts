@@ -119,6 +119,22 @@ test("HTTP and MCP bind the same request origin without forwarding untrusted aut
       assert.equal(verifies, 1);
       assert.equal(settlements, 1);
     });
+    await t.test("paid routes always challenge 402 by default even with fresh client IP", async () => {
+      const prev = process.env.X402_FREE_TRIAL_ENABLED;
+      delete process.env.X402_FREE_TRIAL_ENABLED;
+      try {
+        for (const path of ["/v1/scan", "/v1/audit/liquidity-lock-verify"]) {
+          const res = await app.request(`${PUBLIC}${path}`, {
+            method: "POST",
+            headers: { "content-type": "application/json", "user-agent": "node-fetch/1.0", "x-forwarded-for": "203.0.113.42" },
+            body: JSON.stringify({ token_address: USDC }),
+          });
+          assert.equal(res.status, 402);
+        }
+      } finally {
+        if (prev !== undefined) process.env.X402_FREE_TRIAL_ENABLED = prev;
+      }
+    });
   } finally {
     globalThis.fetch = originalFetch;
     const cleanupPath = resolve(directory);

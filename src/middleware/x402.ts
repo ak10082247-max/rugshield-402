@@ -114,7 +114,7 @@ const paymentHandler = createMiddleware<{
     const isProbe = userAgent.includes("probe") || userAgent.includes("crawler") || userAgent.includes("spider") || userAgent.includes("mcp") || userAgent.includes("glama") || userAgent.includes("rokmcp") || userAgent.includes("lumiere") || userAgent.includes("wellknown") || c.req.method === "HEAD";
 
     // 1-Call Freemium Hook: Provide real alpha on Call #1 to trading bots, convert to paid on Call #2
-    if (process.env.X402_FREE_TRIAL_ENABLED !== "0" && !isProbe && clientIp !== "unknown" && c.req.method === "POST") {
+    if (process.env.X402_FREE_TRIAL_ENABLED === "1" && !isProbe && clientIp !== "unknown" && c.req.method === "POST") {
       const now = Date.now();
       const lastUsed = freeTrialIpMap.get(clientIp);
       if (!lastUsed || (now - lastUsed > 86400000)) {
