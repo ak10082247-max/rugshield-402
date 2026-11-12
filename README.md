@@ -128,6 +128,21 @@ sequenceDiagram
 
 ---
 
+## 🛠️ Multi-Chain Micropayment Rails (x402 V2)
+
+All paid routes support HTTP `402 Payment Required` with gasless facilitators on Base and Solana:
+
+| Parameter | Base Mainnet (`eip155:8453`) | Solana Mainnet (`solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp`) |
+| :--- | :--- | :--- |
+| **Merchant Recipient** | `0x80E0Ae84679b7f11bE171DaADd492FBECf628cd6` | `9wuMysgXwNhtQeqJgGByAiMYc4EjzZ5wUSmnjrrt3ffh` |
+| **Merchant USDC ATA** | Direct ERC-20 mapping | `DD3A7jaXFeHcif9eYj6Vhomuxypat5Yxi8ow6wxz27yL` |
+| **USDC Mint / Contract** | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` | `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v` |
+| **Settlement Standard** | EIP-712 `TransferWithAuthorization` (EIP-3009) | SPL Token `TransferChecked` (Opcode 12) |
+| **Price Tier** | `0.010 USDC` (`10000` micro-USDC) | `0.010 USDC` (`10000` micro-USDC) |
+| **Gas Sponsorship** | **100% Gasless** (Coinbase CDP Facilitator) | **100% Gasless** (PayAI Facilitator `feePayer`) |
+
+---
+
 ## 📦 Developer SDK & Framework Integrations
 
 RugShield is packaged for automated multi-agent frameworks with 100% gasless autonomous payment settlement ($0 ETH / $0 SOL required):
