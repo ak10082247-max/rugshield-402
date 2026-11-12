@@ -107,6 +107,8 @@ test("Solana simulation passes cleanly for liquid SPL token with Jupiter round-t
   assert.equal(res.buy_tax_bps, 0);
   assert.equal(res.sell_tax_bps, 0);
   assert.equal(res.recommendation, "SELL_EXECUTED_IN_SCOPED_SIMULATION");
+  assert.equal(res.verdict, "SELL_EXECUTED_IN_SCOPED_SIMULATION");
+  assert.equal(res.risk_factors.includes("BUY_SELL_EXECUTION_NOT_SIMULATED"), false);
   assert.equal(res.swap_tiers.length, 3);
   assert.equal(res.evidence.token_program.program, "spl-token");
   assert.equal(res.evidence.simulation.buy_leg.provider, "Jupiter");

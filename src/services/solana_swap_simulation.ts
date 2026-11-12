@@ -399,7 +399,9 @@ export async function simulateSolanaToken(
   const { inspection, slot: extSlot, provider: extProvider } = await inspectToken2022Extensions(mint, rpcQuery);
 
   const riskFactors: string[] = Array.isArray(baseScan.risk_factors)
-    ? baseScan.risk_factors.filter((f: string) => f !== "SOLANA_BUY_SELL_EXECUTION_NOT_SIMULATED")
+    ? baseScan.risk_factors.filter(
+        (f: string) => f !== "BUY_SELL_EXECUTION_NOT_SIMULATED" && f !== "SOLANA_BUY_SELL_EXECUTION_NOT_SIMULATED",
+      )
     : [];
   const addFactor = (flag: string) => {
     if (!riskFactors.includes(flag)) riskFactors.push(flag);
@@ -517,6 +519,7 @@ export async function simulateSolanaToken(
     max_slippage_bps: maxSlippageBps,
     risk_factors: riskFactors,
     recommendation,
+    verdict: recommendation,
     simulation_status: "passed",
     evidence: {
       ...(baseScan.evidence || {}),
