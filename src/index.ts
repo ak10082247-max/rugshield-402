@@ -8,6 +8,7 @@ import { x402Middleware, X402_METRICS, getBaseUrl } from "./middleware/x402.js";
 import { deliveryRecorderMiddleware, getRecentDeliveries, getPaidDeliveries } from "./middleware/delivery_recorder.js";
 import { scanToken } from "./services/simulator.js";
 import { scanSolanaToken, SolanaScanError } from "./services/solana_scan.js";
+import { simulateSolanaToken } from "./services/solana_swap_simulation.js";
 import { tokenScreener, holderConcentration, walletBalances, liquidityLockEvidence, smartMoneyOrderflow, crossChainBridgeRisk } from "./services/evidence.js";
 import { readScanInput } from "./services/scan_input.js";
 import { PreviewBudget } from "./services/preview_budget.js";
@@ -45,7 +46,7 @@ app.get("/health", (c) => {
     version: CONFIG.version,
     revision: process.env.RENDER_GIT_COMMIT || process.env.GIT_COMMIT || "unknown",
     fulfillment_storage: "filesystem_instance_local_unless_persistent_volume_mounted",
-    capabilities: { base_swap_simulation: "Uniswap V2 WETH pool, 0.001 ETH, stateful unsigned RPC", solana_mint_inspection: true, solana_swap_simulation: false, specialized_full_analyses: false },
+    capabilities: { base_swap_simulation: "Uniswap V2 WETH pool, 0.001 ETH, stateful unsigned RPC", solana_mint_inspection: true, solana_swap_simulation: "Token-2022 extension audit + Jupiter Lite / Raydium round-trip buy/sell simulation", specialized_full_analyses: false },
     chain_id: CONFIG.chainId,
     endpoints_count: ENDPOINT_SPECS.length,
     timestamp: Math.floor(Date.now() / 1000),
@@ -722,14 +723,32 @@ const handleScan = async (c: any) => {
   const { token, chain, simulate } = input;
 
   if (chain === "solana") {
-    // This capability cannot be fulfilled yet. Avoid provider costs and quote expiry
-    // for a request which must not settle regardless of the mint's metadata.
-    if (simulate) return c.json({ status: "error", error: "SWAP_SIMULATION_UNAVAILABLE", chain, token_address: token, is_honeypot: null, simulation_status: "not_performed", message: "Solana buy/sell execution has not been implemented. No payment collected. Explicit simulate_sell:false requests mint inspection only.", payment_collected: false }, 503);
     let solanaScan;
-    try { solanaScan = await scanSolanaToken(token); } catch (error) {
+    try {
+      solanaScan = simulate
+        ? await simulateSolanaToken(token, { includeMultiTier: Boolean(c.req.path?.includes("swap-simulation-proof")) })
+        : await scanSolanaToken(token);
+    } catch (error) {
       const err = error as SolanaScanError;
-      return c.json({ status: "error", error: err.code || "RPC_UNAVAILABLE", message: err.message, chain: "solana", token_address: token, is_honeypot: null }, err.httpStatus || 503);
+      return c.json(
+        {
+          status: "error",
+          error:
+            err.code === "NO_SOLANA_DEX_ROUTE" || err.code === "SIMULATION_PROVIDER_UNAVAILABLE"
+              ? "SWAP_SIMULATION_UNAVAILABLE"
+              : err.code || "RPC_UNAVAILABLE",
+          reason: err.code || undefined,
+          message: err.message,
+          chain: "solana",
+          token_address: token,
+          is_honeypot: null,
+          simulation_status: simulate ? "inconclusive" : "not_performed",
+          payment_collected: false,
+        },
+        err.httpStatus || 503,
+      );
     }
+    (solanaScan as any).agent_continuation = AGENT_CONTINUATION;
     return c.json(solanaScan, 200);
   }
 
@@ -816,11 +835,7 @@ const handleHolderClusterMap = async (c: any) => acquisitionResponse(c, holderCo
 app.post("/v1/audit/holder-cluster-map", handleHolderClusterMap);
 app.get("/v1/audit/holder-cluster-map", handleHolderClusterMap);
 const handleSwapSimulationProof = async (c: any) => {
-  let input;
-  try { input = await readScanInput(c); } catch (error) { return invalidScanInput(c, error); }
-  if (input.chain === "solana") {
-    return c.json({ status: "error", error: "ANALYSIS_UNAVAILABLE", message: "Solana swap simulation proof is currently unavailable" }, 503);
-  }
+  try { await readScanInput(c); } catch (error) { return invalidScanInput(c, error); }
   return handleScan(c);
 };
 app.post("/v1/audit/swap-simulation-proof", handleSwapSimulationProof);

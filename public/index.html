@@ -488,7 +488,7 @@
     <div class="header">
       <div class="brand">
         <h1>🛡️ RugShield 402 Pre-Trade Token Security</h1>
-        <p>Token inspection on Base and Solana. Scoped Base swap simulation costs 0.010 USDC via x402 or run by credit card on Apify. Custom audits: <a href="mailto:armkhan18@gmail.com?subject=RugShield%20Custom%20Audit" style="color:#38bdf8;">armkhan18@gmail.com</a> (email-only).</p>
+        <p>Pre-trade honeypot &amp; tax simulation on Base (Uniswap V2) and Solana (Token-2022 + Jupiter/Raydium round-trip). Costs 0.010 USDC via x402 or run by credit card on Apify. Custom audits: <a href="mailto:armkhan18@gmail.com?subject=RugShield%20Custom%20Audit" style="color:#38bdf8;">armkhan18@gmail.com</a> (email-only).</p>
       </div>
       <div class="protocol-pills">
         <a class="pill" href="https://apify.com/kuroxreal/rugshield-402" target="_blank" rel="noopener"><strong>💳 Apify</strong> (Card / Free Credits)</a>
@@ -582,11 +582,11 @@
         <div class="paywall-overlay" id="paywallOverlay">
           <div class="paywall-title">🔒 Insider Cluster Map, Honeypot Calldata Simulation &amp; Smart-Money Netflow</div>
           <div class="paywall-sub">
-            Purchase an actual 0.001 ETH buy/sell simulation for a supported Base Uniswap V2 pool. Holder clusters and smart-money flow remain unavailable and are shown as unknown.
+            Purchase a $0.010 USDC pre-trade simulation on Base (0.001 ETH Uniswap V2 stateful RPC) or Solana (Token-2022 extension audit + Jupiter/Raydium round-trip simulation). Holder clusters and smart-money flow remain separate endpoints.
           </div>
           <div class="pay-buttons">
             <button class="btn-pay-sol" onclick="unlockWithSolana()">
-              Solana swap simulation unavailable — free mint inspection above
+              Solana buy/sell simulation info — 0.010 USDC via x402
             </button>
             <button class="btn-pay-base" onclick="unlockWithBase()">
               Buy scoped Base simulation — 0.010 USDC
@@ -718,7 +718,7 @@
 
     async function unlockWithBase() {
       const target = document.getElementById("targetInput").value.trim();
-      if (!/^0x[a-fA-F0-9]{40}$/.test(target)) { setStatus("Enter a Base token contract address. Solana swap simulation is not available.", "#ef4444"); return; }
+      if (!/^0x[a-fA-F0-9]{40}$/.test(target)) { setStatus("Enter a Base (0x...) address for browser signing, or call POST /v1/scan with Solana x402 payment.", "#ef4444"); return; }
       try {
         const saved = JSON.parse(sessionStorage.getItem(pendingPurchaseKey) || "null");
         if (saved) {
@@ -747,7 +747,7 @@
     }
 
     async function unlockWithSolana() {
-      setStatus("Solana mint inspection is available in the free preview. Full Solana buy/sell simulation is not implemented, so this page will not request payment for it.", "#fbbf24");
+      setStatus(`Solana buy/sell simulation is live on POST /v1/scan & MCP (0.010 USDC via SPL TransferChecked, payTo: ${SOLANA_MERCHANT}). Use an x402 Solana client/MCP, or inspect mint telemetry in the free preview above.`, "#10b981");
     }
 
     // Deep-link support: /?token=<address_or_mint> or /?url=<target_url>

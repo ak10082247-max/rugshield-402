@@ -16,7 +16,7 @@
     "mcp": "node dist/mcp/server.js",
     "mcp:dev": "tsx src/mcp/server.ts",
     "bot": "tsx scripts/start_telegram_bot.ts",
-    "test": "tsx test/simulator.test.ts",
+    "test": "tsx test/simulator.test.ts && tsx test/solana_simulation.test.ts",
     "seed": "tsx scripts/seed_payment.ts"
   },
   "license": "MIT",

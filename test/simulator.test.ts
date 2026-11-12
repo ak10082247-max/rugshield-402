@@ -264,7 +264,7 @@ test("Browser validates actual quote and retains the same authorization through 
  await vm.runInContext("unlockWithBase()",b.context);assert.equal(b.walletCalls.filter(x=>x.method==="eth_signTypedData_v4").length,1);assert.equal(b.requests[2].init.headers["PAYMENT-SIGNATURE"],firstHeader);assert.equal(b.storage.size,0);
  assert.match(b.element("uSim").innerText,/Unknown/);assert.match(b.element("uClusters").innerText,/Unknown/);assert.match(b.element("uNetflow").innerText,/Unknown/);
 });
-test("Browser rejects changed quote price and requests no Solana full-simulation payment",async()=>{
+test("Browser rejects changed quote price and keeps Solana flow informative without wallet prompts",async()=>{
  const b=browserHarness("20000");await vm.runInContext("unlockWithBase()",b.context);assert.equal(b.walletCalls.length,0);assert.equal(b.storage.size,0);
- await vm.runInContext("unlockWithSolana()",b.context);assert.equal(b.walletCalls.length,0);assert.match(b.element("paymentStatus").textContent,/will not request payment/);
+ await vm.runInContext("unlockWithSolana()",b.context);assert.equal(b.walletCalls.length,0);assert.match(b.element("paymentStatus").textContent,/Solana buy\/sell simulation is live/);
 });
