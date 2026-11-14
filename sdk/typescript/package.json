@@ -1,6 +1,6 @@
 {
   "name": "@kurox_real/rugshield-client",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Official TypeScript/JavaScript client for RugShield 402 honeypot detector, tax simulator, and LP lock verifier on Base via x402.",
   "type": "module",
   "main": "dist/index.js",

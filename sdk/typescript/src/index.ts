@@ -63,6 +63,8 @@ export interface InstitutionalReportResult {
 export class RugShieldClient {
   private baseUrl: string;
   private payingFetch: typeof fetch;
+  private previewFetch: typeof fetch;
+  private readonly hasPaymentCapability: boolean;
 
   constructor(options?: {
     baseUrl?: string;
@@ -70,9 +72,19 @@ export class RugShieldClient {
     customFetch?: typeof fetch;
   }) {
     this.baseUrl = (options?.baseUrl ?? "https://rugshield-402.onrender.com").replace(/\/$/, "");
+    this.previewFetch = options?.customFetch ?? fetch;
+    const rawKey =
+      options?.privateKey ??
+      process.env.X402_PRIVATE_KEY ??
+      process.env.RUGSHIELD_PRIVATE_KEY ??
+      process.env.EVM_PRIVATE_KEY;
+    const normalizedKey = rawKey
+      ? (`0x${rawKey.trim().replace(/^0x/i, "")}` as `0x${string}`)
+      : undefined;
+    this.hasPaymentCapability = Boolean(normalizedKey);
 
-    if (options?.privateKey) {
-      const account = privateKeyToAccount(options.privateKey);
+    if (normalizedKey) {
+      const account = privateKeyToAccount(normalizedKey);
       const client = new x402Client();
       client.register("eip155:8453", new ExactEvmScheme(account));
 
@@ -97,7 +109,7 @@ export class RugShieldClient {
         }
       });
 
-      this.payingFetch = wrapFetchWithPayment(options.customFetch ?? fetch, client);
+      this.payingFetch = wrapFetchWithPayment(options?.customFetch ?? fetch, client);
     } else {
       this.payingFetch = options?.customFetch ?? fetch;
     }
@@ -106,11 +118,12 @@ export class RugShieldClient {
   /**
    * Free evaluation preview without wallet or x402 payment header.
    */
-  async scanPreview(tokenAddress: string, chainId: number = 8453): Promise<ScanResult> {
-    const res = await fetch(`${this.baseUrl}/v1/scan/preview`, {
+  async scanPreview(tokenAddress: string, chainId: number = 8453, chain?: "base" | "solana"): Promise<ScanResult> {
+    const resolvedChain = chain ?? (tokenAddress.startsWith("0x") ? "base" : "solana");
+    const res = await this.previewFetch(`${this.baseUrl}/v1/scan/preview`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token_address: tokenAddress, chain_id: chainId, simulate_sell: true }),
+      body: JSON.stringify({ token_address: tokenAddress, chain_id: chainId, chain: resolvedChain, simulate_sell: true }),
     });
 
     if (!res.ok) {
@@ -126,14 +139,16 @@ export class RugShieldClient {
    */
   async scanToken(
     tokenAddress: string,
-    options?: { chainId?: number; simulateSell?: boolean }
+    options?: { chainId?: number; chain?: "base" | "solana"; simulateSell?: boolean }
   ): Promise<ScanResult> {
+    const resolvedChain = options?.chain ?? (tokenAddress.startsWith("0x") ? "base" : "solana");
     const res = await this.payingFetch(`${this.baseUrl}/v1/scan`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         token_address: tokenAddress,
         chain_id: options?.chainId ?? 8453,
+        chain: resolvedChain,
         simulate_sell: options?.simulateSell ?? true,
       }),
     });
@@ -148,11 +163,17 @@ export class RugShieldClient {
 
   /**
    * Boolean pre-swap guardrail for autonomous trading loops.
-   * Returns true only when simulation passed, honeypot is explicitly false, and sell tax < 10% (1000 bps).
+   * Uses paid /v1/scan simulation when a buyer wallet (or customFetch) is configured;
+   * otherwise queries /v1/scan/preview (unsimulated, fails closed as false).
    */
-  async isSafeToSwap(tokenAddress: string): Promise<boolean> {
+  async isSafeToSwap(
+    tokenAddress: string,
+    options?: { chainId?: number; chain?: "base" | "solana"; simulateSell?: boolean },
+  ): Promise<boolean> {
     try {
-      const res = await this.scanPreview(tokenAddress);
+      const res = this.hasPaymentCapability
+        ? await this.scanToken(tokenAddress, options)
+        : await this.scanPreview(tokenAddress, options?.chainId ?? 8453, options?.chain);
       return (
         res.simulation_status === "passed" &&
         res.is_honeypot === false &&
@@ -219,13 +240,16 @@ export class RugShieldClient {
   }
 
   /**
-   * Full multi-vector institutional risk audit dossier (0.150 USDC).
+   * Full multi-vector institutional risk audit dossier (0.150 USDC, Base or Solana).
    */
-  async institutionalTokenReport(tokenAddress: string): Promise<InstitutionalReportResult> {
+  async institutionalTokenReport(
+    tokenAddress: string,
+    chain: "base" | "solana" = tokenAddress.startsWith("0x") ? "base" : "solana",
+  ): Promise<InstitutionalReportResult> {
     const res = await this.payingFetch(`${this.baseUrl}/v1/risk/institutional-token-report`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token_address: tokenAddress }),
+      body: JSON.stringify({ token_address: tokenAddress, chain }),
     });
 
     if (!res.ok) {

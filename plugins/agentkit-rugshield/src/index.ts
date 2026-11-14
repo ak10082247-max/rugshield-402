@@ -3,53 +3,40 @@ import {
   executeRugShieldScan,
   type RugShieldScanInput,
   type RugShieldScanOutput,
+  type RugShieldActionOptions,
 } from "./action.js";
 
 /**
  * Coinbase AgentKit Custom Action Provider Definition
- *
- * Plug this directly into your AgentKit setup:
- *
- * ```typescript
- * import { AgentKit } from "@coinbase/agentkit";
- * import { rugshieldActionProvider } from "@kurox_real/agentkit-rugshield-402";
- *
- * const agentKit = await AgentKit.from({
- *   actionProviders: [
- *     rugshieldActionProvider(),
- *     // ... other providers
- *   ]
- * });
- * ```
  */
-export function rugshieldActionProvider(options?: {
-  hostUrl?: string;
-  paymentHeader?: string;
-}) {
+export function rugshieldActionProvider(options?: RugShieldActionOptions) {
+  const action = {
+    name: "rugshield_pre_swap_scan",
+    description:
+      "MANDATORY: Simulates DEX buy/sell orders on Base and Solana to detect honeypots, calculate exact buy/sell tax bps, and verify liquidity before executing a swap. Auto-pays $0.010 USDC via @x402/fetch when X402_PRIVATE_KEY is set, or evaluates /v1/scan/preview.",
+    schema: RugShieldScanInputSchema,
+    invoke: async (args: RugShieldScanInput) => {
+      const result = await executeRugShieldScan(args, options);
+      return JSON.stringify(result, null, 2);
+    },
+  };
+
   return {
     name: "rugshield_action_provider",
     description:
-      "Action provider for RugShield 402: executes real-time honeypot detection, buy/sell tax simulation, and liquidity verification on Base.",
+      "Action provider for RugShield 402: executes real-time honeypot detection, buy/sell tax simulation, and liquidity verification on Base & Solana.",
     supportsNetwork: (network: { protocolFamily?: string; networkId?: string }) => {
-      // Supports Base mainnet and EVM
       return (
         network.protocolFamily === "evm" ||
+        network.protocolFamily === "svm" ||
         network.networkId === "base-mainnet" ||
-        network.networkId === "base"
+        network.networkId === "base" ||
+        network.networkId === "solana-mainnet" ||
+        network.networkId === "solana"
       );
     },
-    actions: [
-      {
-        name: "rugshield_pre_swap_scan",
-        description:
-          "MANDATORY: Simulates DEX buy/sell orders on Base to detect honeypots, calculate exact buy/sell tax bps, and verify liquidity before executing a swap. Cost: 0.010 USDC on Base.",
-        schema: RugShieldScanInputSchema,
-        invoke: async (args: RugShieldScanInput) => {
-          const result = await executeRugShieldScan(args, options);
-          return JSON.stringify(result, null, 2);
-        },
-      },
-    ],
+    getActions: () => [action],
+    actions: [action],
   };
 }
 
@@ -58,6 +45,6 @@ export {
   executeRugShieldScan,
   type RugShieldScanInput,
   type RugShieldScanOutput,
+  type RugShieldActionOptions,
 };
-
 export default rugshieldActionProvider;

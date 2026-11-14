@@ -1,6 +1,6 @@
 {
   "name": "@kurox_real/agentkit-rugshield-402",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Coinbase AgentKit Action Provider for RugShield 402 DEX honeypot detection & buy/sell tax simulation on Base (x402 protocol gated).",
   "type": "module",
   "main": "dist/index.js",
@@ -44,6 +44,9 @@
     "directory": "plugins/agentkit-rugshield"
   },
   "dependencies": {
+    "@x402/evm": "^2.28.0",
+    "@x402/fetch": "^2.28.0",
+    "viem": "^2.57.4",
     "zod": "^3.24.1"
   },
   "devDependencies": {
