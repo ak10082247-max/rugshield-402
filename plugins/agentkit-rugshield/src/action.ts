@@ -16,16 +16,16 @@ export type RugShieldScanInput = z.infer<typeof RugShieldScanInputSchema>;
 
 export interface RugShieldScanOutput {
   token: string;
-  symbol: string;
-  name: string;
-  isHoneypot: boolean;
-  buyTaxBps: number;
-  sellTaxBps: number;
-  liquidityUsd: number;
-  riskScore: number;
+  symbol: string | null;
+  name: string | null;
+  isHoneypot: boolean | null;
+  buyTaxBps: number | null;
+  sellTaxBps: number | null;
+  liquidityUsd: number | null;
+  riskScore: number | null;
   riskFactors: string[];
-  recommendation: "SAFE_TO_SWAP" | "HIGH_RISK_BLOCK" | "CAUTION";
-  attestation: string;
+  recommendation: string;
+  attestation: string | null;
   timestamp: number;
 }
 
@@ -48,6 +48,7 @@ export async function executeRugShieldScan(
   };
 
   if (options?.paymentHeader) {
+    headers["PAYMENT-SIGNATURE"] = options.paymentHeader;
     headers["X-PAYMENT"] = options.paymentHeader;
   }
 
@@ -63,8 +64,9 @@ export async function executeRugShieldScan(
 
   if (res.status === 402) {
     const challenge = await res.json().catch(() => ({}));
+    const payTo = challenge?.accepts?.[0]?.payTo || challenge?.payTo || "0x80E0Ae84679b7f11bE171DaADd492FBECf628cd6";
     throw new Error(
-      `RugShield 402 Payment Required: 0.005 USDC to ${challenge.payTo || "0x80E0Ae84679b7f11bE171DaADd492FBECf628cd6"} on Base. Facilitator: ${challenge.facilitator || "coinbase-cdp"}.`
+      `RugShield 402 Payment Required: 0.010 USDC to ${payTo} on Base. Facilitator: ${challenge.facilitator || "coinbase-cdp"}.`
     );
   }
 
@@ -74,18 +76,28 @@ export async function executeRugShieldScan(
   }
 
   const data = (await res.json()) as any;
+  const isHoneypot = typeof data.is_honeypot === "boolean" ? data.is_honeypot : null;
+  const buyTaxBps = typeof data.buy_tax_bps === "number" ? data.buy_tax_bps : null;
+  const sellTaxBps = typeof data.sell_tax_bps === "number" ? data.sell_tax_bps : null;
+  const recommendation =
+    data.recommendation ||
+    (isHoneypot === true
+      ? "HIGH_RISK_BLOCK"
+      : isHoneypot === false && sellTaxBps !== null && sellTaxBps < 1000
+        ? "SAFE_TO_SWAP"
+        : "UNVERIFIED");
   return {
-    token: data.token,
-    symbol: data.symbol,
-    name: data.name,
-    isHoneypot: Boolean(data.is_honeypot),
-    buyTaxBps: Number(data.buy_tax_bps ?? 0),
-    sellTaxBps: Number(data.sell_tax_bps ?? 0),
-    liquidityUsd: Number(data.liquidity_usd ?? 0),
-    riskScore: Number(data.risk_score ?? 0),
+    token: data.token || params.tokenAddress,
+    symbol: data.symbol ?? null,
+    name: data.name ?? null,
+    isHoneypot,
+    buyTaxBps,
+    sellTaxBps,
+    liquidityUsd: typeof data.liquidity_usd === "number" ? data.liquidity_usd : null,
+    riskScore: typeof data.risk_score === "number" ? data.risk_score : null,
     riskFactors: Array.isArray(data.risk_factors) ? data.risk_factors : [],
-    recommendation: data.recommendation || (data.is_honeypot ? "HIGH_RISK_BLOCK" : "SAFE_TO_SWAP"),
-    attestation: data.attestation || "",
+    recommendation,
+    attestation: data.attestation ?? null,
     timestamp: data.timestamp || Math.floor(Date.now() / 1000),
   };
 }

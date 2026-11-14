@@ -3,7 +3,7 @@
  *
  * Real-time token honeypot detection, buy/sell tax simulation,
  * and DEX LP lock verification for autonomous trading bots and AI agents.
- * 0.010 - 0.020 USDC per call on Base (eip155:8453) via x402.
+ * 0.010 - 0.150 USDC per call on Base (eip155:8453) via x402.
  */
 
 import { x402Client } from "@x402/core/client";
@@ -15,13 +15,13 @@ export interface ScanResult {
   status: "success" | "warning" | "danger" | "error";
   token_address: string;
   symbol?: string;
-  is_honeypot: boolean;
-  buy_tax_bps: number;
-  sell_tax_bps: number;
+  is_honeypot: boolean | null;
+  buy_tax_bps: number | null;
+  sell_tax_bps: number | null;
   simulation_status: string;
-  liquidity_usd?: number;
+  liquidity_usd?: number | null;
   warnings?: string[];
-  lp_locked_pct?: number;
+  lp_locked_pct?: number | null;
 }
 
 export interface LiquidityLockResult {
@@ -79,7 +79,7 @@ export class RugShieldClient {
       // Enforce client-side safety guardrails before signing payments
       const expectedMerchant = "0x80e0ae84679b7f11be171daadd492fbecf628cd6";
       const baseUsdc = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";
-      const maxPerCallMicroUsdc = 25000n; // 0.025 USDC maximum per call
+      const maxPerCallMicroUsdc = 150000n; // 0.150 USDC maximum per call (covers institutional reports)
 
       client.onBeforePaymentCreation(async (context) => {
         const req = context.selectedRequirements;
@@ -148,19 +148,24 @@ export class RugShieldClient {
 
   /**
    * Boolean pre-swap guardrail for autonomous trading loops.
-   * Returns true only if not a honeypot and sell tax < 10% (1000 bps).
+   * Returns true only when simulation passed, honeypot is explicitly false, and sell tax < 10% (1000 bps).
    */
   async isSafeToSwap(tokenAddress: string): Promise<boolean> {
     try {
       const res = await this.scanPreview(tokenAddress);
-      return !res.is_honeypot && res.sell_tax_bps < 1000;
+      return (
+        res.simulation_status === "passed" &&
+        res.is_honeypot === false &&
+        typeof res.sell_tax_bps === "number" &&
+        res.sell_tax_bps < 1000
+      );
     } catch {
       return false;
     }
   }
 
   /**
-   * Verify DEX LP token locking on Aerodrome / Uncx / Team.Finance (0.020 USDC).
+   * Verify DEX LP token locking on Aerodrome / Uncx / Team.Finance (0.050 USDC).
    */
   async auditLiquidityLock(tokenAddress: string): Promise<LiquidityLockResult> {
     const res = await this.payingFetch(`${this.baseUrl}/v1/audit/liquidity-lock-verify`, {
@@ -178,7 +183,7 @@ export class RugShieldClient {
   }
 
   /**
-   * Scan top 50 token holders for sybil rings and coordinated dev dumps (0.020 USDC).
+   * Scan top 50 token holders for sybil rings and coordinated dev dumps (0.050 USDC).
    */
   async holderClusterMap(tokenAddress: string): Promise<HolderClusterResult> {
     const res = await this.payingFetch(`${this.baseUrl}/v1/audit/holder-cluster-map`, {
@@ -196,7 +201,7 @@ export class RugShieldClient {
   }
 
   /**
-   * State-override swap simulation proving slippage, price impact, and frontrunning (0.020 USDC).
+   * State-override swap simulation proving slippage, price impact, and frontrunning (0.100 USDC).
    */
   async swapSimulationProof(tokenAddress: string, amountUsd: number = 10000): Promise<SwapSimulationResult> {
     const res = await this.payingFetch(`${this.baseUrl}/v1/audit/swap-simulation-proof`, {
@@ -214,7 +219,7 @@ export class RugShieldClient {
   }
 
   /**
-   * Full 7-vector institutional risk audit dossier (0.020 USDC).
+   * Full multi-vector institutional risk audit dossier (0.150 USDC).
    */
   async institutionalTokenReport(tokenAddress: string): Promise<InstitutionalReportResult> {
     const res = await this.payingFetch(`${this.baseUrl}/v1/risk/institutional-token-report`, {

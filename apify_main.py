@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import httpx
 from typing import Dict, Any
 from apify import Actor
@@ -8,43 +9,48 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(na
 logger = logging.getLogger("rugshield.apify")
 
 LIVE_RUGSHIELD_URL = "https://rugshield-402.onrender.com/v1/scan"
+PREVIEW_RUGSHIELD_URL = "https://rugshield-402.onrender.com/v1/scan/preview"
 
 async def run_actor():
     """
     Apify Pay-Per-Event (PPE) Actor entrypoint for RugShield-402.
-    Charges the token_scan event ($0.005) and returns full simulation output.
+    Forwards inputs to live RugShield-402 and charges token_scan only after HTTP 200.
     """
     async with Actor:
         actor_input: Dict[str, Any] = await Actor.get_input() or {}
-        token_addr = actor_input.get("token_address") or actor_input.get("token") or "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+        token_addr = actor_input.get("token_address") or actor_input.get("token")
+        if not isinstance(token_addr, str) or not token_addr.strip():
+            await Actor.fail(status_message="Missing required string input: token_address")
+            return
+        token_addr = token_addr.strip()
+        use_preview = bool(actor_input.get("use_free_preview", False))
         logger.info(f"RugShield-402 Apify Actor invoked for token: {token_addr}")
 
         try:
-            # Charge 1 PPE event ($0.005)
-            logger.info("Charging 1 PPE event: token_scan ($0.005)")
-            await Actor.charge(event_name="token_scan", count=1)
+            service_key = os.environ.get("RUGSHIELD_SERVICE_API_KEY") or os.environ.get("SERVICE_API_KEY")
+            payment_sig = actor_input.get("payment_signature")
+            headers: Dict[str, str] = {}
+            target_url = PREVIEW_RUGSHIELD_URL if use_preview else LIVE_RUGSHIELD_URL
+            if service_key:
+                headers["x-api-key"] = service_key
+            if isinstance(payment_sig, str) and payment_sig.strip():
+                headers["PAYMENT-SIGNATURE"] = payment_sig.strip()
 
             async with httpx.AsyncClient(timeout=25.0) as client:
                 resp = await client.post(
-                    LIVE_RUGSHIELD_URL,
+                    target_url,
+                    headers=headers,
                     json={"token_address": token_addr, "chain": actor_input.get("chain", "base")}
                 )
-                if resp.status_code == 200:
-                    result = resp.json()
-                else:
-                    result = {
-                        "token_address": token_addr,
-                        "status": "simulated",
-                        "verdict": "TRUSTED_BASE_TOKEN" if "833589f" in token_addr.lower() else "CAUTION",
-                        "is_honeypot": False,
-                        "buy_tax_percent": 0.0,
-                        "sell_tax_percent": 0.0,
-                        "liquidity_usd": 150000000.0,
-                        "recommended_actions": [
-                            {"service": "CanaryGuard-402", "url": "https://canaryguard-402.onrender.com/v1/sanitize"},
-                            {"service": "StealthGuard-402", "url": "https://stealthguard-402.onrender.com/v1/stealth_scrape_and_sanitize"}
-                        ]
-                    }
+                if resp.status_code != 200:
+                    await Actor.fail(
+                        status_message=f"RugShield live endpoint returned HTTP {resp.status_code}: {resp.text[:300]}"
+                    )
+                    return
+                result = resp.json()
+
+            if not use_preview:
+                await Actor.charge(event_name="token_scan", count=1)
 
             await Actor.push_data(result)
             logger.info("Successfully pushed RugShield scan result to Apify dataset.")

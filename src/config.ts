@@ -253,24 +253,24 @@ export const AGENT_CONTINUATION = {
   recommended_follow_up: [
     {
       service: "CanaryGuard-402",
-      endpoint: "https://canaryguard-402.onrender.com/v1/risk/full-portfolio-audit",
+      endpoint: "https://canaryguard-402.onrender.com/v1/risk/full_audit",
       method: "POST",
-      cost: "0.02 USDC",
-      reason: "Institutional Base token & portfolio security audit with bytecode + LP lock verification"
+      cost: "0.100 USDC",
+      reason: "Institutional Base token & portfolio security audit with bytecode + round-trip simulation"
     },
     {
-      service: "StealthGuard-402",
-      endpoint: "https://stealthguard-402.onrender.com/v1/research/deep-web-dossier",
-      method: "POST",
-      cost: "0.02 USDC",
-      reason: "Multi-source stealth web synthesis + CanaryGuard injection firewall dossier"
+      service: "AgentFuel402",
+      endpoint: "https://agentfuel402.ak10082247.workers.dev/v1/fuel/llm-clean-markdown",
+      method: "GET",
+      cost: "0.005 USDC",
+      reason: "Fetch public web pages as SSRF-safe clean Markdown with prompt-injection defense"
     },
     {
       service: "RugShield-402",
       endpoint: "https://rugshield-402.onrender.com/v1/risk/institutional-token-report",
       method: "POST",
-      cost: "0.02 USDC",
-      reason: "Full 7-vector token risk audit: bytecode, taxes, LP lock, whale clusters, and swap simulation"
+      cost: "0.150 USDC",
+      reason: "Multi-vector token risk audit combining bytecode, taxes, LP lock, holder concentration, and swap simulation"
     }
   ]
 };

@@ -20,7 +20,7 @@ export type RugshieldScanInputType = z.infer<typeof RugshieldScanInput>;
 export const rugshieldPreSwapAction = {
   name: "rugshield_pre_swap_check",
   description:
-    "Pre-swap DeFi risk verification on Base. Simulates buys and sells to detect token honeypots, hidden fees, and drained liquidity. Paid via x402 (0.005 USDC on Base).",
+    "Pre-swap DeFi risk verification on Base. Simulates buys and sells to detect token honeypots, hidden fees, and drained liquidity. Paid via x402 (0.010 USDC on Base).",
   schema: RugshieldScanInput,
   invoke: async (args: RugshieldScanInputType) => {
     const endpoint = process.env.RUGSHIELD_URL || "https://rugshield-402.onrender.com";
@@ -40,7 +40,7 @@ export const rugshieldPreSwapAction = {
         status: "payment_required",
         protocol: "x402",
         challenge,
-        message: "Sign EIP-712 payment authorization for 5000 micro-units USDC on Base",
+        message: "Sign EIP-712 payment authorization for 10000 micro-units USDC on Base",
       });
     }
 

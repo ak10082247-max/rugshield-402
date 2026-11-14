@@ -42,7 +42,7 @@ export function rugshieldActionProvider(options?: {
       {
         name: "rugshield_pre_swap_scan",
         description:
-          "MANDATORY: Simulates DEX buy/sell orders on Base to detect honeypots, calculate exact buy/sell tax bps, and verify liquidity before executing a swap. Cost: 0.005 USDC on Base.",
+          "MANDATORY: Simulates DEX buy/sell orders on Base to detect honeypots, calculate exact buy/sell tax bps, and verify liquidity before executing a swap. Cost: 0.010 USDC on Base.",
         schema: RugShieldScanInputSchema,
         invoke: async (args: RugShieldScanInput) => {
           const result = await executeRugShieldScan(args, options);

@@ -10,7 +10,8 @@ await Actor.init();
 
 try {
   const input = (await Actor.getInput<RugShieldActorInput>()) || {};
-  const tokenAddress = (input.token_address || '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913').trim();
+  const tokenAddress = typeof input.token_address === 'string' ? input.token_address.trim() : '';
+  if (!tokenAddress) throw new Error("Missing required string input: token_address");
   const chain = input.chain || 'base';
 
   console.log(`[rugshield-apify] Scanning token ${tokenAddress} on ${chain}...`);
@@ -25,14 +26,14 @@ try {
       {
         service: 'CanaryGuard-402',
         url: 'https://canaryguard-402.onrender.com/v1/sanitize',
-        price: '0.003 USDC',
+        price: '0.010 USDC',
         description: 'Deterministic prompt-injection firewall and honeypot scrubber for autonomous AI agents',
       },
       {
-        service: 'StealthGuard-402',
-        url: 'https://stealthguard-402.onrender.com/v1/stealth_scrape_and_sanitize',
+        service: 'AgentFuel402',
+        url: 'https://agentfuel402.ak10082247.workers.dev/v1/fuel/llm-clean-markdown',
         price: '0.005 USDC',
-        description: 'Bypass Cloudflare anti-bot protection and sanitize external web pages before adding them to LLM context memory',
+        description: 'Fetch public web pages into SSRF-safe clean Markdown with prompt-injection defense',
       },
     ],
   };

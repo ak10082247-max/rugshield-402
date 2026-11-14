@@ -596,22 +596,22 @@ const agentKit = await AgentKit.from({
       </div>
 
       <div id="tabContentCurl" class="code-block" style="display: none;">
-# Direct x402 Paid Query ($0.005 USDC to 0x80E0Ae84679b7f11bE171DaADd492FBECf628cd6)
+# Direct x402 Paid Query ($0.010 USDC to 0x80E0Ae84679b7f11bE171DaADd492FBECf628cd6)
 curl -X POST https://rugshield-402.onrender.com/v1/scan \
   -H "Content-Type: application/json" \
-  -H "X-PAYMENT: { \"signature\": \"...\", \"authorization\": { ... } }" \
+  -H "PAYMENT-SIGNATURE: &lt;base64-x402-v2-payment-payload&gt;" \
   -d '{"token_address": "0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed"}'
       </div>
     </div>
 
     <footer>
-      <div>RugShield 402 — Autonomous Security Infrastructure for Base</div>
-      <div class="footer-wallet">Merchant Tollbooth: 0x80E0Ae84679b7f11bE171DaADd492FBECf628cd6</div>
+      <div>RugShield 402 — Autonomous Security Infrastructure for Base &amp; Solana</div>
+      <div class="footer-wallet">Merchant Recipient: 0x80E0Ae84679b7f11bE171DaADd492FBECf628cd6</div>
     </footer>
   </div>
 
   <script>
-    const API_ENDPOINT = 'https://rugshield-402.onrender.com/v1/scan';
+    const API_PREVIEW_ENDPOINT = 'https://rugshield-402.onrender.com/v1/scan/preview';
 
     function setToken(addr) {
       document.getElementById('tokenInput').value = addr;
@@ -629,46 +629,42 @@ curl -X POST https://rugshield-402.onrender.com/v1/scan \
       }
 
       btn.disabled = true;
-      btn.innerText = 'Simulating...';
+      btn.innerText = 'Checking Preview...';
 
       try {
-        const res = await fetch(API_ENDPOINT, {
+        const res = await fetch(API_PREVIEW_ENDPOINT, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token_address: addr, chain_id: 8453, simulate_sell: true })
         });
 
-        let data;
-        if (res.status === 402) {
-          data = {
-            symbol: addr.slice(0, 6).toUpperCase(),
-            token: addr,
-            is_honeypot: false,
-            buy_tax_bps: 0,
-            sell_tax_bps: 0,
-            liquidity_usd: 554342,
-            recommendation: "SAFE_TO_SWAP",
-            attestation: "x402_verified_8453"
-          };
-        } else {
-          data = await res.json();
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || `HTTP ${res.status}`);
         }
 
-        document.getElementById('resSymbol').innerText = data.symbol || 'TOKEN';
-        document.getElementById('resAddress').innerText = data.token ? data.token.slice(0, 6) + '...' + data.token.slice(-4) : addr;
-        document.getElementById('resHoneypot').innerText = data.is_honeypot ? 'YES (TRAP)' : 'NO';
-        document.getElementById('resBuyTax').innerText = ((data.buy_tax_bps || 0) / 100).toFixed(1) + '%';
-        document.getElementById('resSellTax').innerText = ((data.sell_tax_bps || 0) / 100).toFixed(1) + '%';
-        document.getElementById('resLiquidity').innerText = '$' + Number(data.liquidity_usd || 0).toLocaleString();
-        document.getElementById('resAttestation').innerText = data.attestation || 'verified';
+        document.getElementById('resSymbol').innerText = data.symbol || 'UNKNOWN';
+        document.getElementById('resAddress').innerText = (data.token || addr).slice(0, 6) + '...' + (data.token || addr).slice(-4);
+        document.getElementById('resHoneypot').innerText =
+          typeof data.is_honeypot === 'boolean' ? (data.is_honeypot ? 'YES (TRAP)' : 'NO') : 'UNSIMULATED (PREVIEW)';
+        document.getElementById('resBuyTax').innerText =
+          typeof data.buy_tax_bps === 'number' ? (data.buy_tax_bps / 100).toFixed(1) + '%' : 'UNSIMULATED';
+        document.getElementById('resSellTax').innerText =
+          typeof data.sell_tax_bps === 'number' ? (data.sell_tax_bps / 100).toFixed(1) + '%' : 'UNSIMULATED';
+        document.getElementById('resLiquidity').innerText =
+          typeof data.liquidity_usd === 'number' ? '$' + Number(data.liquidity_usd).toLocaleString() : 'Unavailable';
+        document.getElementById('resAttestation').innerText = data.attestation || data.simulation_status || 'preview_only';
 
         const badge = document.getElementById('resBadge');
-        if (data.is_honeypot || (data.sell_tax_bps || 0) > 1000) {
+        if (data.is_honeypot === true || (typeof data.sell_tax_bps === 'number' && data.sell_tax_bps > 1000)) {
           badge.className = 'status-badge danger';
           badge.innerText = 'HIGH RISK BLOCK';
-        } else {
+        } else if (data.simulation_status === 'passed' && data.is_honeypot === false) {
           badge.className = 'status-badge safe';
           badge.innerText = 'SAFE TO SWAP';
+        } else {
+          badge.className = 'status-badge';
+          badge.innerText = 'PREVIEW ONLY (UNSIMULATED)';
         }
 
         const basescanLink = document.getElementById('basescanBtn');
@@ -678,7 +674,7 @@ curl -X POST https://rugshield-402.onrender.com/v1/scan \
 
         container.style.display = 'block';
       } catch (err) {
-        alert('Simulation error: ' + err.message);
+        alert('Scan error: ' + err.message);
       } finally {
         btn.disabled = false;
         btn.innerText = 'Scan Token';
@@ -687,43 +683,19 @@ curl -X POST https://rugshield-402.onrender.com/v1/scan \
 
     function shareOnX() {
       const symbol = document.getElementById('resSymbol').innerText || 'TOKEN';
-      const tax = document.getElementById('resSellTax').innerText || '0.0%';
-      const liq = document.getElementById('resLiquidity').innerText || '$0';
-      const isSafe = document.getElementById('resBadge').innerText.includes('SAFE');
-      const verdict = isSafe ? 'SAFE TO SWAP ✅' : 'HIGH RISK / TRAP 🚨';
+      const tax = document.getElementById('resSellTax').innerText || 'UNSIMULATED';
+      const liq = document.getElementById('resLiquidity').innerText || 'Unavailable';
+      const verdict = document.getElementById('resBadge').innerText || 'PREVIEW ONLY';
       const addr = document.getElementById('tokenInput').value.trim();
 
-      const text = `Just audited $${symbol} on @base with RugShield 402 🛡️\n\n• Verdict: ${verdict}\n• Sell Tax: ${tax}\n• Verified DEX Liquidity: ${liq}\n• Token: ${addr}\n\nPre-swap simulation for AI agents via HTTP 402:\nhttps://ak10082247-max.github.io/rugshield-402/`;
+      const text = `Checked $${symbol} on @base with RugShield 402 🛡️\n\n• Status: ${verdict}\n• Sell Tax: ${tax}\n• DEX Liquidity: ${liq}\n• Token: ${addr}\n\nPre-swap simulation for AI agents via HTTP 402:\nhttps://rugshield-402.onrender.com/`;
       window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, '_blank');
     }
 
     async function loadRecentScans() {
-      try {
-        const res = await fetch('https://rugshield-402.onrender.com/v1/recent-scans');
-        if (!res.ok) return;
-        const data = await res.json();
-        const container = document.getElementById('liveFeedContainer');
-        if (!container || !data.scans || data.scans.length === 0) return;
-
-        container.innerHTML = data.scans.slice(0, 6).map(s => `
-          <div class="live-feed-item">
-            <div style="display: flex; gap: 0.75rem; align-items: center;">
-              <span class="pulse-dot" style="background: ${s.is_honeypot ? 'var(--danger)' : 'var(--safe)'}; box-shadow: 0 0 8px ${s.is_honeypot ? 'var(--danger)' : 'var(--safe)'};"></span>
-              <div>
-                <div style="font-weight: 700; font-size: 0.95rem; color: #fff;">${s.name} (${s.symbol})</div>
-                <div style="font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);">${s.pool_name} · ${s.dex}</div>
-              </div>
-            </div>
-            <div style="display: flex; gap: 0.75rem; align-items: center;">
-              <span style="font-size: 0.8rem; font-family: var(--font-mono); font-weight: 600; color: ${s.is_honeypot ? 'var(--danger)' : 'var(--safe)'};">
-                ${s.is_honeypot ? 'HONEYPOT' : (s.sell_tax_bps / 100).toFixed(1) + '% tax'}
-              </span>
-              <button class="btn-quick-audit" onclick="setToken('${s.token_address}');">Audit</button>
-            </div>
-          </div>
-        `).join('');
-      } catch (e) {
-        console.warn('Could not load recent scans', e);
+      const container = document.getElementById('liveFeedContainer');
+      if (container) {
+        container.innerHTML = '<div style="color: var(--text-muted); font-size: 0.85rem; padding: 0.5rem 0;">Submit a token address above to fetch a live preview, or pay $0.010 USDC via POST /v1/scan for state-override simulation.</div>';
       }
     }
 
@@ -739,9 +711,7 @@ curl -X POST https://rugshield-402.onrender.com/v1/scan \
     }
 
     window.addEventListener('DOMContentLoaded', () => {
-      runScan();
       loadRecentScans();
-      setInterval(loadRecentScans, 20000);
     });
   </script>
 </body>

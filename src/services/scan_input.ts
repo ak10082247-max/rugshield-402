@@ -21,12 +21,7 @@ export async function readScanInput(c: any) {
         body = {};
       }
     } catch {
-      const isRapid = typeof c.req.header === "function" && (c.req.header("x-rapidapi-proxy-secret") || c.req.header("x-rapidapi-user") || c.req.header("x-rapidapi-host") || c.req.header("x-api-key"));
-      if (isRapid) {
-        body = {};
-      } else {
-        throw new ScanInputError("INVALID_JSON", "Expected a JSON object request body");
-      }
+      throw new ScanInputError("INVALID_JSON", "Expected a JSON object request body");
     }
     if (!body || typeof body !== "object" || Array.isArray(body)) throw new ScanInputError("INVALID_JSON_OBJECT", "Expected a JSON object request body");
   }
@@ -36,13 +31,7 @@ export async function readScanInput(c: any) {
     if (c.req.query(key) !== undefined) targets.push(c.req.query(key));
   }
   if (!targets.length || targets.some(target => typeof target !== "string")) {
-    // If request originated from RapidAPI test runner without target, default to Base USDC
-    const isRapid = typeof c.req.header === "function" && (c.req.header("x-rapidapi-proxy-secret") || c.req.header("x-rapidapi-user") || c.req.header("x-rapidapi-host") || c.req.header("x-api-key"));
-    if (isRapid) {
-      targets.push("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913");
-    } else {
-      throw new ScanInputError("INVALID_TOKEN_ADDRESS", "A token or wallet address string is required");
-    }
+    throw new ScanInputError("INVALID_TOKEN_ADDRESS", "A token or wallet address string is required");
   }
   const normalizedTargets = (targets as string[]).map(target => target.trim()).map(target => target.startsWith("0x") ? target.toLowerCase() : target);
   if (new Set(normalizedTargets).size !== 1) throw new ScanInputError("CONFLICTING_TARGET_ADDRESSES", "Every supplied target alias must name the same address");

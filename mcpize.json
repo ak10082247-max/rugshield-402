@@ -80,7 +80,7 @@
       ],
       "pay_per_call": {
         "enabled": true,
-        "price_usd": 0.005
+        "price_usd": 0.010
       }
     }
   }

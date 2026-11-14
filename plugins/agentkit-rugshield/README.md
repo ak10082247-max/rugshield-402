@@ -2,7 +2,7 @@
 
 **Coinbase AgentKit Action Provider for Pre-Swap Honeypot Detection & Tax Simulation on Base**
 
-Gated by the **x402 Payment Protocol** ($0.005 USDC per scan on Base Mainnet to merchant `0x80E0Ae84679b7f11bE171DaADd492FBECf628cd6`).
+Gated by the **x402 Payment Protocol** ($0.010 USDC per scan on Base Mainnet to merchant `0x80E0Ae84679b7f11bE171DaADd492FBECf628cd6`).
 
 ---
 

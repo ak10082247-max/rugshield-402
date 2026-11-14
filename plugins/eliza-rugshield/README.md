@@ -2,7 +2,7 @@
 
 **Autonomous Pre-Swap Honeypot Detection & Tax Verification Plugin for ElizaOS Agents on Base**
 
-Gated by the **x402 Payment Protocol** ($0.005 USDC per scan on Base Mainnet).
+Gated by the **x402 Payment Protocol** ($0.010 USDC per scan on Base Mainnet).
 
 ## Overview
 This plugin provides the `PRE_SWAP_RISK_CHECK` action for ElizaOS agents. Before an agent swaps any token on Base (Aerodrome, Uniswap v3), it automatically queries the RugShield 402 engine to:

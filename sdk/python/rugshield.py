@@ -150,12 +150,15 @@ class RugShieldClient:
     def is_safe_to_swap(self, token_address: str) -> bool:
         """
         Boolean pre-flight check for autonomous trading execution loops.
+        Returns True only when simulation passed with is_honeypot explicitly False and sell tax < 10% (1000 bps).
         """
         try:
             result = self.scan_token(token_address)
-            is_honeypot = result.get("is_honeypot", False)
-            sell_tax = result.get("sell_tax_bps", 0)
-            return (not is_honeypot) and (sell_tax < 1000)
+            if result.get("simulation_status") not in (None, "passed"):
+                return False
+            is_honeypot = result.get("is_honeypot")
+            sell_tax = result.get("sell_tax_bps")
+            return (is_honeypot is False) and isinstance(sell_tax, (int, float)) and (sell_tax < 1000)
         except Exception:
             return False
 

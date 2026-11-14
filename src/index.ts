@@ -938,8 +938,8 @@ app.get("/v1/telemetry/deliveries", (c) => {
   });
 });
 
-// Telemetry & Payment Metrics Endpoint: GET /v1/stats
-app.get("/v1/stats", (c) => {
+// Telemetry & Payment Metrics Endpoint: GET /v1/stats (and /stats alias)
+const statsHandler = (c: any) => {
   return c.json({
     status: "ok",
     service: CONFIG.serviceName,
@@ -955,7 +955,9 @@ app.get("/v1/stats", (c) => {
     },
     timestamp: Math.floor(Date.now() / 1000),
   });
-});
+};
+app.get("/v1/stats", statsHandler);
+app.get("/stats", statsHandler);
 
 // IndexNow ownership verification key (must be served at the domain root)
 app.get("/kurox402indexnowkey20261022abc.txt", (c) => c.text("kurox402indexnowkey20261022abc"));

@@ -82,20 +82,15 @@ const paymentHandler = createMiddleware<{
     return next();
   }
 
-  // RapidAPI Gateway & Direct API Key Bypass
-  // RapidAPI automatically attaches X-RapidAPI-Proxy-Secret and X-RapidAPI-User on all proxied requests
   const rapidSecret = c.req.header("x-rapidapi-proxy-secret");
-  const rapidUser = c.req.header("x-rapidapi-user");
-  const rapidHost = c.req.header("x-rapidapi-host");
   const apiKey = c.req.header("x-api-key") || (c.req.header("authorization")?.startsWith("Bearer ") ? c.req.header("authorization")?.slice(7) : null);
   const configuredSecret = process.env.RAPIDAPI_PROXY_SECRET;
-  const configuredApiKey = process.env.SERVICE_API_KEY || "kurox-master-key-2026";
+  const configuredApiKey = process.env.SERVICE_API_KEY;
 
-  const isRapidApi = configuredSecret
-    ? (rapidSecret === configuredSecret)
-    : Boolean(rapidSecret || (rapidUser && rapidHost));
+  const isRapidApi = Boolean(configuredSecret && rapidSecret === configuredSecret);
+  const hasValidApiKey = Boolean(configuredApiKey && apiKey === configuredApiKey);
 
-  if (isRapidApi || (apiKey && apiKey === configuredApiKey)) {
+  if (isRapidApi || hasValidApiKey) {
     c.header("X-RapidAPI-Bypass", "active");
     return next();
   }

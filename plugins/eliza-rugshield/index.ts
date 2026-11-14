@@ -48,9 +48,10 @@ export const preSwapRiskCheckAction: ElizaAction = {
 
       if (response.status === 402) {
         const challenge = await response.json();
+        const payTo = challenge?.accepts?.[0]?.payTo || challenge?.payTo || "0x80E0Ae84679b7f11bE171DaADd492FBECf628cd6";
         if (callback) {
           callback({
-            text: `RugShield 402 payment required ($0.005 USDC on Base). PayTo: ${challenge.payTo}`,
+            text: `RugShield 402 payment required ($0.010 USDC on Base). PayTo: ${payTo}`,
             action: "X402_PAYMENT_REQUIRED",
             challenge
           });
@@ -58,18 +59,22 @@ export const preSwapRiskCheckAction: ElizaAction = {
         return false;
       }
 
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
       const report = await response.json();
-      const isSafe = report.recommendation === "SAFE_TO_SWAP";
+      const isSafe = report.recommendation === "SAFE_TO_SWAP" && report.is_honeypot === false;
 
       if (callback) {
         callback({
-          text: `RugShield Security Report for ${report.symbol} (${tokenAddress}):\n` +
-            `• Recommendation: ${report.recommendation}\n` +
-            `• Honeypot: ${report.is_honeypot ? "YES (DO NOT BUY)" : "NO"}\n` +
-            `• Buy Tax: ${report.buy_tax_bps / 100}%\n` +
-            `• Sell Tax: ${report.sell_tax_bps / 100}%\n` +
-            `• Pool Liquidity: $${report.liquidity_usd.toLocaleString()}\n` +
-            `• Risk Score: ${report.risk_score}`,
+          text: `RugShield Security Report for ${report.symbol ?? tokenAddress} (${tokenAddress}):\n` +
+            `• Recommendation: ${report.recommendation ?? "UNVERIFIED"}\n` +
+            `• Honeypot: ${report.is_honeypot === true ? "YES (DO NOT BUY)" : report.is_honeypot === false ? "NO" : "UNVERIFIED"}\n` +
+            `• Buy Tax: ${typeof report.buy_tax_bps === "number" ? (report.buy_tax_bps / 100) + "%" : "UNVERIFIED"}\n` +
+            `• Sell Tax: ${typeof report.sell_tax_bps === "number" ? (report.sell_tax_bps / 100) + "%" : "UNVERIFIED"}\n` +
+            `• Pool Liquidity: ${typeof report.liquidity_usd === "number" ? "$" + report.liquidity_usd.toLocaleString() : "Unavailable"}\n` +
+            `• Risk Score: ${report.risk_score ?? "N/A"}`,
           report
         });
       }

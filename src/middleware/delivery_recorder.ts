@@ -34,22 +34,22 @@ function decodePayerFromHeader(rawHeader?: string): { payer: string; amount: num
     const parsed = JSON.parse(jsonStr);
 
     if (parsed.payload?.authorization?.from) {
-      const val = parsed.payload.authorization.value ? Number(parsed.payload.authorization.value) / 1e6 : 0.005;
+      const val = parsed.payload.authorization.value ? Number(parsed.payload.authorization.value) / 1e6 : 0;
       return { payer: String(parsed.payload.authorization.from).toLowerCase(), amount: val };
     }
     if (parsed.authorization?.from) {
-      const val = parsed.authorization.value ? Number(parsed.authorization.value) / 1e6 : 0.005;
+      const val = parsed.authorization.value ? Number(parsed.authorization.value) / 1e6 : 0;
       return { payer: String(parsed.authorization.from).toLowerCase(), amount: val };
     }
     if (parsed.from) {
-      const val = parsed.value ? Number(parsed.value) / 1e6 : 0.005;
+      const val = parsed.value ? Number(parsed.value) / 1e6 : 0;
       return { payer: String(parsed.from).toLowerCase(), amount: val };
     }
     if (parsed.payer) {
-      return { payer: String(parsed.payer).toLowerCase(), amount: Number(parsed.amount || 0.005) };
+      return { payer: String(parsed.payer).toLowerCase(), amount: Number(parsed.amount || 0) };
     }
   } catch {}
-  return { payer: "unknown_signer", amount: 0.005 };
+  return { payer: "unknown_signer", amount: 0 };
 }
 
 export const deliveryRecorderMiddleware = createMiddleware(async (c, next) => {
@@ -119,7 +119,7 @@ export const deliveryRecorderMiddleware = createMiddleware(async (c, next) => {
     timestamp_utc: new Date().toISOString(),
     settled,
     payer_wallet: resolvedPayer,
-    amount_usdc: settled ? (resolvedAmount || 0.005) : 0.0,
+    amount_usdc: settled ? resolvedAmount : 0.0,
     endpoint: reqPath,
     method: c.req.method,
     user_agent,
