@@ -268,3 +268,45 @@ test("Browser rejects changed quote price and keeps Solana flow informative with
  const b=browserHarness("20000");await vm.runInContext("unlockWithBase()",b.context);assert.equal(b.walletCalls.length,0);assert.equal(b.storage.size,0);
  await vm.runInContext("unlockWithSolana()",b.context);assert.equal(b.walletCalls.length,0);assert.match(b.element("paymentStatus").textContent,/Solana buy\/sell simulation is live/);
 });
+
+test("GoPlus LP lock and Solana holder security intelligence resolve full analyses without fabrication", async () => {
+  const bonk = "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263";
+  const mockFetch = (async (url: any) => {
+    const target = String(url);
+    if (target.includes("solana/token_security")) {
+      return json({
+        result: {
+          [bonk]: {
+            metadata: { name: "Bonk", symbol: "BONK" },
+            holder_count: "850000",
+            total_supply: "88000000000000",
+            holders: [
+              { account: "11111111111111111111111111111111", percent: "0.08", balance: "1000", is_locked: 1 },
+              { account: "22222222222222222222222222222222", percent: "0.04", balance: "500", is_locked: 0 },
+            ],
+            lp_holder_count: "120",
+            lp_holders: [
+              { address: "1nc1nerator11111111111111111111111111111111", percent: "0.92", is_locked: 1, tag: "Raydium Burn", locked_detail: [{ end_time: 1900000000 }] },
+            ],
+          },
+        },
+      });
+    }
+    return json({ pairs: [] });
+  }) as typeof fetch;
+
+  const lp: any = await liquidityLockEvidence(bonk, undefined, mockFetch);
+  assert.equal(lp.status, "success");
+  assert.equal(lp.fulfillment_complete, true);
+  assert.equal(lp.chain, "solana");
+  assert.equal(lp.lp_locked_pct, 92);
+  assert.equal(lp.is_rug_proof, true);
+  assert.equal(lp.unlock_timestamp, 1900000000);
+
+  const holders: any = await holderConcentration(bonk, undefined, mockFetch);
+  assert.equal(holders.status, "success");
+  assert.equal(holders.fulfillment_complete, true);
+  assert.equal(holders.chain, "solana");
+  assert.equal(holders.whale_concentration_score, 12);
+  assert.equal(holders.cluster_risk_verdict, "LOW_CONCENTRATION_RISK");
+});

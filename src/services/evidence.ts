@@ -3,8 +3,95 @@ import { CONFIG } from "../config.js";
 import { publicClient } from "./rpc.js";
 import { querySolanaRpc, isSolanaMintAddress } from "./solana_scan.js";
 
-export async function liquidityLockEvidence(token: string, client: typeof publicClient = publicClient) {
-  if (!token.startsWith("0x")) throw new Error("SOLANA_LP_LOCK_ACQUISITION_UNAVAILABLE");
+const BURN_ADDRESSES = new Set([
+  "0x0000000000000000000000000000000000000000",
+  "0x000000000000000000000000000000000000dead",
+  "1nc1nerator11111111111111111111111111111111",
+]);
+
+async function fetchGoPlusTokenSecurity(token: string, request: typeof fetch = fetch): Promise<any | null> {
+  const isBase = token.startsWith("0x");
+  const key = isBase ? token.toLowerCase() : token;
+  const url = isBase
+    ? `https://api.gopluslabs.io/api/v1/token_security/8453?contract_addresses=${encodeURIComponent(key)}`
+    : `https://api.gopluslabs.io/api/v1/solana/token_security?contract_addresses=${encodeURIComponent(token)}`;
+  try {
+    const resp = await request(url, { signal: AbortSignal.timeout(8000) });
+    if (!resp.ok) return null;
+    const body: any = await resp.json();
+    const info = body?.result?.[key] ?? body?.result?.[token] ?? null;
+    return info && typeof info === "object" ? info : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function liquidityLockEvidence(
+  token: string,
+  client: typeof publicClient = publicClient,
+  request?: typeof fetch,
+) {
+  const isBase = token.startsWith("0x");
+  const shouldQueryExternal = client === publicClient || request !== undefined;
+  const externalFetch = request ?? fetch;
+
+  if (shouldQueryExternal) {
+    const info = await fetchGoPlusTokenSecurity(token, externalFetch);
+    if (info && Array.isArray(info.lp_holders) && info.lp_holders.length > 0) {
+      let lockedPct = 0;
+      let burnedPct = 0;
+      const lockers = new Set<string>();
+      let earliestUnlock: number | null = null;
+      const holders = info.lp_holders.slice(0, 10).map((h: any) => {
+        const pct = Number(h.percent || 0) * 100;
+        const addr = String(h.address || h.account || "");
+        const isLocked = Number(h.is_locked) === 1 || h.is_locked === true;
+        const isBurned = BURN_ADDRESSES.has(addr.toLowerCase()) || /dead|burn|null/i.test(String(h.tag || ""));
+        if (isLocked) {
+          lockedPct += pct;
+          if (h.tag) lockers.add(String(h.tag));
+          if (Array.isArray(h.locked_detail)) {
+            for (const d of h.locked_detail) {
+              const end = Number(d?.end_time);
+              if (Number.isFinite(end) && end > 0 && (earliestUnlock === null || end < earliestUnlock)) {
+                earliestUnlock = end;
+              }
+            }
+          }
+        }
+        if (isBurned) burnedPct += pct;
+        return {
+          address: addr,
+          tag: h.tag || null,
+          share_pct: Number(pct.toFixed(4)),
+          is_locked: isLocked,
+          is_contract: Boolean(Number(h.is_contract) === 1 || h.is_contract === true),
+        };
+      });
+
+      const effectiveSecuredPct = Math.min(100, Number(lockedPct.toFixed(4)));
+      return {
+        status: "success",
+        fulfillment_complete: true,
+        chain: isBase ? "base" : "solana",
+        token_address: isBase ? getAddress(token) : token,
+        lp_locked_pct: effectiveSecuredPct,
+        burn_address_lp_pct: Number(Math.min(100, burnedPct).toFixed(4)),
+        lock_platform: lockers.size > 0 ? [...lockers].join(", ") : burnedPct > 0 ? "Burned LP" : "Verified LP Ledger",
+        unlock_timestamp: earliestUnlock,
+        is_rug_proof: effectiveSecuredPct >= 80,
+        lp_holder_count: Number(info.lp_holder_count) || holders.length,
+        lp_holders: holders,
+        evidence: {
+          provider: "GoPlus Security Intelligence",
+          acquired_at: new Date().toISOString(),
+          method: isBase ? "token_security/8453#lp_holders" : "solana/token_security#lp_holders",
+        },
+      };
+    }
+  }
+
+  if (!isBase) throw new Error("SOLANA_LP_LOCK_ACQUISITION_UNAVAILABLE");
   const address = getAddress(token);
   const [chainId, blockNumber] = await Promise.all([client.getChainId(), client.getBlockNumber()]);
   if (chainId !== 8453) throw new Error("RPC_CHAIN_MISMATCH");
@@ -44,43 +131,39 @@ export async function tokenScreener(token: string, request: typeof fetch = fetch
   return { status: "partial", fulfillment_complete: false, chain, queried_token: token, pools, evidence: { provider: "DexScreener", acquired_at: new Date().toISOString() }, unavailable: ["honeypot_execution", "smart_money_identity_and_inflows"] };
 }
 
-export async function holderConcentration(token: string, query = querySolanaRpc) {
+export async function holderConcentration(
+  token: string,
+  query = querySolanaRpc,
+  request?: typeof fetch,
+) {
   if (token.startsWith("0x")) {
-    try {
-      const resp = await fetch(`https://api.gopluslabs.io/api/v1/token_security/8453?contract_addresses=${encodeURIComponent(token)}`, {
-        signal: AbortSignal.timeout(8000)
-      });
-      if (resp.ok) {
-        const data = await resp.json();
-        const info = data.result?.[token.toLowerCase()];
-        if (info && Array.isArray(info.holders) && info.holders.length > 0) {
-          const topHolders = info.holders.slice(0, 10).map((h: any) => ({
-            address: h.address,
-            share_pct: Number(h.percent) * 100,
-            balance: h.balance,
-            is_contract: Boolean(h.is_contract),
-            is_locked: Boolean(h.is_locked),
-            tag: h.tag || null
-          }));
-          const whaleScore = topHolders.reduce((acc: number, h: any) => acc + h.share_pct, 0);
-          return {
-            status: "success",
-            fulfillment_complete: true,
-            chain: "base",
-            token_address: token,
-            token_name: info.token_name || null,
-            token_symbol: info.token_symbol || null,
-            total_supply: info.total_supply || null,
-            holder_count: Number(info.holder_count) || null,
-            whale_concentration_score: Number(whaleScore.toFixed(2)),
-            cluster_risk_verdict: whaleScore > 50 ? "HIGH_CONCENTRATION_RISK" : (whaleScore > 25 ? "MODERATE_CONCENTRATION_RISK" : "LOW_CONCENTRATION_RISK"),
-            top_holders_count: topHolders.length,
-            largest_holders: topHolders,
-            evidence: { provider: "GoPlus Security Intelligence", acquired_at: new Date().toISOString() }
-          };
-        }
-      }
-    } catch { /* RPC fallback */ }
+    const info = await fetchGoPlusTokenSecurity(token, request ?? fetch);
+    if (info && Array.isArray(info.holders) && info.holders.length > 0) {
+      const topHolders = info.holders.slice(0, 10).map((h: any) => ({
+        address: h.address,
+        share_pct: Number(h.percent) * 100,
+        balance: h.balance,
+        is_contract: Boolean(Number(h.is_contract) === 1 || h.is_contract === true),
+        is_locked: Boolean(Number(h.is_locked) === 1 || h.is_locked === true),
+        tag: h.tag || null
+      }));
+      const whaleScore = topHolders.reduce((acc: number, h: any) => acc + h.share_pct, 0);
+      return {
+        status: "success",
+        fulfillment_complete: true,
+        chain: "base",
+        token_address: token,
+        token_name: info.token_name || null,
+        token_symbol: info.token_symbol || null,
+        total_supply: info.total_supply || null,
+        holder_count: Number(info.holder_count) || null,
+        whale_concentration_score: Number(whaleScore.toFixed(2)),
+        cluster_risk_verdict: whaleScore > 50 ? "HIGH_CONCENTRATION_RISK" : (whaleScore > 25 ? "MODERATE_CONCENTRATION_RISK" : "LOW_CONCENTRATION_RISK"),
+        top_holders_count: topHolders.length,
+        largest_holders: topHolders,
+        evidence: { provider: "GoPlus Security Intelligence", acquired_at: new Date().toISOString() }
+      };
+    }
 
     const wallet = getAddress(token);
     const [chainId, blockNumber, supply] = await Promise.all([
@@ -99,6 +182,35 @@ export async function holderConcentration(token: string, query = querySolanaRpc)
       largest_holders: [],
       evidence: { chain_id: chainId, block_number: blockNumber.toString(), provider: "Base RPC getBlockNumber / totalSupply" }
     };
+  }
+  if (query === querySolanaRpc || request !== undefined) {
+    const info = await fetchGoPlusTokenSecurity(token, request ?? fetch);
+    if (info && Array.isArray(info.holders) && info.holders.length > 0) {
+      const topHolders = info.holders.slice(0, 10).map((h: any) => ({
+        address: h.account || h.address || null,
+        share_pct: Number((Number(h.percent || 0) * 100).toFixed(4)),
+        balance: h.balance ?? null,
+        is_locked: Boolean(Number(h.is_locked) === 1 || h.is_locked === true),
+        tag: h.tag || null,
+      }));
+      const whaleScore = Number(topHolders.reduce((acc: number, h: any) => acc + h.share_pct, 0).toFixed(2));
+      return {
+        status: "success",
+        fulfillment_complete: true,
+        chain: "solana",
+        token_address: token,
+        token_name: info.metadata?.name || null,
+        token_symbol: info.metadata?.symbol || null,
+        total_supply: info.total_supply || null,
+        holder_count: Number(info.holder_count) || null,
+        whale_concentration_score: whaleScore,
+        top_10_token_accounts_pct: whaleScore,
+        cluster_risk_verdict: whaleScore > 50 ? "HIGH_CONCENTRATION_RISK" : (whaleScore > 25 ? "MODERATE_CONCENTRATION_RISK" : "LOW_CONCENTRATION_RISK"),
+        top_holders_count: topHolders.length,
+        largest_holders: topHolders,
+        evidence: { provider: "GoPlus Solana Security Intelligence", acquired_at: new Date().toISOString() },
+      };
+    }
   }
   const [largest, supply] = await Promise.all([
     query("getTokenLargestAccounts", [token, { commitment: "confirmed" }]),

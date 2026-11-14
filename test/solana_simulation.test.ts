@@ -79,7 +79,25 @@ test("Solana simulation passes cleanly for liquid SPL token with Jupiter round-t
             ],
           });
         }
-        if (url.includes("lite-api.jup.ag/swap/v1/quote")) {
+        if (url.includes("gopluslabs.io") && url.includes("solana/token_security")) {
+      return json({
+        result: {
+          [BONK]: {
+            holder_count: "850000",
+            total_supply: "88000000000000",
+            holders: [
+              { account: "11111111111111111111111111111111", percent: "0.08", balance: "1000", is_locked: 1 },
+              { account: "22222222222222222222222222222222", percent: "0.04", balance: "500", is_locked: 0 },
+            ],
+            lp_holder_count: "120",
+            lp_holders: [
+              { address: "1nc1nerator11111111111111111111111111111111", percent: "0.92", is_locked: 1, tag: "Raydium Burn", locked_detail: [{ end_time: 1900000000 }] },
+            ],
+          },
+        },
+      });
+    }
+    if (url.includes("lite-api.jup.ag/swap/v1/quote")) {
           const parsed = new URL(url);
           const inMint = parsed.searchParams.get("inputMint");
           const amt = BigInt(parsed.searchParams.get("amount") || "0");
@@ -241,7 +259,7 @@ test("HTTP /health advertises Solana simulation capability cleanly", async () =>
     assert.equal(res.status, 200);
     const body = (await res.json()) as any;
     assert.ok(typeof body.capabilities.solana_swap_simulation === "string" && body.capabilities.solana_swap_simulation.length > 0);
-    assert.equal(body.capabilities.specialized_full_analyses, false);
+    assert.equal(body.capabilities.specialized_full_analyses, true);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -283,6 +301,24 @@ test("HTTP Solana /v1/scan/preview, paid /v1/scan simulation, 402 proof challeng
     }
     if (url.includes("dexscreener.com")) {
       return json({ pairs: [{ chainId: "solana", pairAddress: "pool1", dexId: "whirlpool", baseToken: { address: BONK, symbol: "BONK", name: "Bonk" }, liquidity: { usd: 5000000 } }] });
+    }
+    if (url.includes("gopluslabs.io") && url.includes("solana/token_security")) {
+      return json({
+        result: {
+          [BONK]: {
+            holder_count: "850000",
+            total_supply: "88000000000000",
+            holders: [
+              { account: "11111111111111111111111111111111", percent: "0.08", balance: "1000", is_locked: 1 },
+              { account: "22222222222222222222222222222222", percent: "0.04", balance: "500", is_locked: 0 },
+            ],
+            lp_holder_count: "120",
+            lp_holders: [
+              { address: "1nc1nerator11111111111111111111111111111111", percent: "0.92", is_locked: 1, tag: "Raydium Burn", locked_detail: [{ end_time: 1900000000 }] },
+            ],
+          },
+        },
+      });
     }
     if (url.includes("lite-api.jup.ag/swap/v1/quote")) {
       const parsed = new URL(url);
@@ -434,11 +470,62 @@ test("HTTP Solana /v1/scan/preview, paid /v1/scan simulation, 402 proof challeng
       headers: { "Content-Type": "application/json", "PAYMENT-SIGNATURE": instHeader },
       body: JSON.stringify({ token_address: BONK, chain: "solana" }),
     });
-    assert.equal(instRes.status, 503);
-    assert.equal(instRes.headers.get("PAYMENT-RESPONSE"), null);
-    assert.equal(settleCount, 1);
+    assert.equal(instRes.status, 200);
+    assert.ok(instRes.headers.get("PAYMENT-RESPONSE"));
+    assert.equal(settleCount, 2);
     const instBody = (await instRes.json()) as any;
-    assert.equal(instBody.error, "ANALYSIS_UNAVAILABLE");
+    assert.equal(instBody.chain, "solana");
+    assert.equal(instBody.fulfillment_complete, true);
+    assert.equal(instBody.liquidity_lock_analysis.lp_locked_pct, 92);
+    assert.equal(instBody.holder_analysis.whale_concentration_score, 12);
+    assert.equal(instBody.orderflow_analysis.status, "success");
+
+    // Negative path: unquoted / failed simulation returns 503 and withholds settlement
+    const failTx = new VersionedTransaction(
+      new TransactionMessage({
+        payerKey: new PublicKey(instSol.extra.feePayer),
+        recentBlockhash: Keypair.generate().publicKey.toBase58(),
+        instructions: [
+          ComputeBudgetProgram.setComputeUnitLimit({ units: 20000 }),
+          ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1 }),
+          new TransactionInstruction({
+            programId: tokenProg,
+            keys: [
+              { pubkey: buyerAta, isSigner: false, isWritable: true },
+              { pubkey: usdcMint, isSigner: false, isWritable: false },
+              { pubkey: destAta, isSigner: false, isWritable: true },
+              { pubkey: buyer.publicKey, isSigner: true, isWritable: false },
+            ],
+            data: instBuf,
+          }),
+        ],
+      }).compileToV0Message(),
+    );
+    failTx.sign([buyer]);
+    const failHeader = Buffer.from(
+      JSON.stringify({
+        x402Version: 2,
+        resource: instPr.resource,
+        accepted: instSol,
+        payload: { transaction: Buffer.from(failTx.serialize()).toString("base64") },
+        extensions: instPr.extensions,
+      }),
+    ).toString("base64");
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes("lite-api.jup.ag")) return json({ error: "RATE_LIMIT" }, 503);
+      return realFetch(input, init);
+    }) as typeof fetch;
+    const failRes = await service.request("http://localhost/v1/risk/institutional-token-report", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "PAYMENT-SIGNATURE": failHeader },
+      body: JSON.stringify({ token_address: BONK, chain: "solana" }),
+    });
+    assert.equal(failRes.status, 503);
+    assert.equal(failRes.headers.get("PAYMENT-RESPONSE"), null);
+    assert.equal(settleCount, 2);
+    const failBody = (await failRes.json()) as any;
+    assert.equal(failBody.error, "ANALYSIS_UNAVAILABLE");
   } finally {
     globalThis.fetch = originalFetch;
     rmSync(dir, { recursive: true, force: true });

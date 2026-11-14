@@ -40,13 +40,26 @@ app.use("*", x402Middleware);
 
 // Health check endpoint (free, no auth, monitored by keep-alive)
 app.get("/health", (c) => {
+  const fulfillmentDir = process.env.X402_FULFILLMENT_DIR || join(process.cwd(), ".x402-fulfillments");
+  const fulfillmentStorage =
+    process.env.X402_FULFILLMENT_DIR?.startsWith("/app/state") && existsSync("/app/state")
+      ? "persistent_volume_mounted"
+      : process.env.X402_FULFILLMENT_DIR && existsSync(fulfillmentDir)
+      ? "configured_directory"
+      : "filesystem_instance_local";
+
   return c.json({
     status: "ok",
     service: CONFIG.serviceName,
     version: CONFIG.version,
     revision: process.env.RENDER_GIT_COMMIT || process.env.GIT_COMMIT || "unknown",
-    fulfillment_storage: "filesystem_instance_local_unless_persistent_volume_mounted",
-    capabilities: { base_swap_simulation: "Uniswap V2 WETH pool, 0.001 ETH, stateful unsigned RPC", solana_mint_inspection: true, solana_swap_simulation: "Token-2022 extension audit + Jupiter Lite / Raydium round-trip buy/sell simulation", specialized_full_analyses: false },
+    fulfillment_storage: fulfillmentStorage,
+    capabilities: {
+      base_swap_simulation: "Uniswap V2 WETH pool, 0.001 ETH, stateful unsigned RPC",
+      solana_mint_inspection: true,
+      solana_swap_simulation: "Token-2022 extension audit + Jupiter Lite / Raydium round-trip buy/sell simulation",
+      specialized_full_analyses: true,
+    },
     chain_id: CONFIG.chainId,
     endpoints_count: ENDPOINT_SPECS.length,
     timestamp: Math.floor(Date.now() / 1000),
@@ -846,10 +859,81 @@ app.get("/v1/audit/cross-chain-bridge-risk", handleCrossChainBridgeRisk);
 const handleInstitutionalReport = async (c: any) => {
   let input;
   try { input = await readScanInput(c); } catch (error) { return invalidScanInput(c, error); }
-  if (input.chain === "solana") {
-    return c.json({ status: "error", error: "ANALYSIS_UNAVAILABLE", message: "Solana institutional analysis is currently unavailable" }, 503);
+  const { token, chain } = input;
+
+  let coreScan: any;
+  try {
+    if (chain === "solana") {
+      coreScan = await simulateSolanaToken(token, { includeMultiTier: true });
+    } else {
+      coreScan = await scanToken({ token_address: token, chain_id: 8453, simulate_sell: true });
+      if (coreScan.simulation_status !== "passed") {
+        return c.json({ ...coreScan, status: "error", error: "SWAP_SIMULATION_UNAVAILABLE", message: "Stateful buy/sell simulation failed for institutional audit. No payment collected.", payment_collected: false }, 503);
+      }
+    }
+  } catch (error: any) {
+    return c.json({
+      status: "error",
+      error: "ANALYSIS_UNAVAILABLE",
+      message: error?.message || "Institutional token simulation could not be acquired",
+      chain,
+      token_address: token,
+      payment_collected: false,
+    }, 503);
   }
-  return handleScan(c);
+
+  const [holdersRes, lpRes, orderflowRes] = await Promise.allSettled([
+    holderConcentration(token),
+    liquidityLockEvidence(token),
+    smartMoneyOrderflow(token),
+  ]);
+
+  const holderData = holdersRes.status === "fulfilled" ? holdersRes.value : null;
+  const lpData = lpRes.status === "fulfilled" ? lpRes.value : null;
+  const orderflowData = orderflowRes.status === "fulfilled" ? orderflowRes.value : null;
+
+  const vectorsChecked: string[] = [chain === "solana" ? "solana_swap_simulation" : "base_stateful_swap_simulation"];
+  let score = coreScan.is_honeypot ? 10 : 90;
+  const sellTax = Number(coreScan.sell_tax_bps ?? 0);
+  const buyTax = Number(coreScan.buy_tax_bps ?? 0);
+  if (sellTax > 2000 || buyTax > 2000) score = Math.min(score, 20);
+  else if (sellTax > 500 || buyTax > 500) score -= 20;
+
+  if (holderData) {
+    vectorsChecked.push("holder_concentration");
+    const conc = Number((holderData as any).whale_concentration_score ?? (holderData as any).top_10_token_accounts_pct ?? 0);
+    if (conc > 60) score -= 20;
+    else if (conc > 35) score -= 10;
+  }
+  if (lpData) {
+    vectorsChecked.push("liquidity_lock_audit");
+    if ((lpData as any).is_rug_proof === true) score = Math.min(100, score + 5);
+  }
+  if (orderflowData && orderflowData.fulfillment_complete) {
+    vectorsChecked.push("dex_orderflow_depth");
+    const liq = Number(orderflowData.orderflow_metrics_24h?.liquidity_usd ?? 0);
+    if (liq > 0 && liq < 5000) score -= 15;
+  }
+
+  const compositeScore = Math.max(0, Math.min(100, Math.round(score)));
+  const riskRating = compositeScore >= 80 ? "LOW_RISK" : compositeScore >= 55 ? "MODERATE_RISK" : compositeScore >= 30 ? "HIGH_RISK" : "CRITICAL_RISK";
+  const fulfillmentComplete = Boolean(coreScan && (holderData || orderflowData || lpData));
+
+  return c.json({
+    ...coreScan,
+    status: "success",
+    fulfillment_complete: fulfillmentComplete,
+    chain,
+    token_address: token,
+    composite_score: compositeScore,
+    risk_rating: riskRating,
+    vectors_checked: vectorsChecked,
+    verdict: coreScan.is_honeypot ? "CRITICAL_HONEYPOT_OR_UNSELLABLE" : (coreScan.recommendation || riskRating),
+    holder_analysis: holderData,
+    liquidity_lock_analysis: lpData,
+    orderflow_analysis: orderflowData,
+    agent_continuation: AGENT_CONTINUATION,
+  }, 200);
 };
 app.post("/v1/risk/institutional-token-report", handleInstitutionalReport);
 app.get("/v1/risk/institutional-token-report", handleInstitutionalReport);
