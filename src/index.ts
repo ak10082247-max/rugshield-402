@@ -687,7 +687,7 @@ app.post("/mcp", async (c) => {
       const route = ["rugshield_pre_swap_scan", "rugshield_scan", "check_honeypot", "analyze_liquidity"].includes(toolName) ? "/v1/scan" : matchedSpec?.path;
       if (route) {
         const headers = new Headers({ "Content-Type": "application/json", "user-agent": "rugshield-mcp-client" });
-        for (const name of ["payment-signature", "x-payment"]) {
+        for (const name of ["payment-signature", "x-payment", "authorization", "x-api-key", "x-rapidapi-proxy-secret"]) {
           const value = c.req.header(name); if (value) headers.set(name, value);
         }
         const origin = new URL(getBaseUrl(c));
@@ -695,7 +695,7 @@ app.post("/mcp", async (c) => {
         headers.set("x-forwarded-proto", origin.protocol.slice(0, -1));
         const response = await app.request(new Request(`${origin.origin}${route}`, { method: "POST", headers, body: JSON.stringify(args) }));
         const data = await response.json();
-        for (const name of ["payment-required", "payment-response", "x-payment-required"]) {
+        for (const name of ["payment-required", "payment-response", "x-payment-required", "x-kurox-auth", "x-kurox-tier"]) {
           const value = response.headers.get(name); if (value) c.header(name, value);
         }
         return c.json({ jsonrpc: "2.0", id, result: { isError: !response.ok, content: [{ type: "text", text: JSON.stringify(data) }], structuredContent: data } }, response.status as any);

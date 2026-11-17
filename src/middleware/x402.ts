@@ -5,6 +5,7 @@ import { verifyTypedData, getAddress, isAddress } from "viem";
 import { CONFIG, ENDPOINT_MAP, ENDPOINT_SPECS, type EndpointPriceSpec } from "../config.js";
 import { fulfillmentStore, FulfillmentStorageError, paymentId, requestFingerprint, snapshotResponse, restoreResponse } from "./fulfillment.js";
 import { authenticateSolanaTransaction } from "./solana_authorization.js";
+import { authenticateKuroxHeaders } from "./kurox_auth.js";
 
 // Replay protection cache: max 100,000 items, TTL 24 hours (86,400,000 ms)
 const replayCache = new LRUCache<string, boolean>({
@@ -60,11 +61,11 @@ const paymentHandler = createMiddleware<{
   c.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   c.header(
     "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, X-PAYMENT, PAYMENT-SIGNATURE, X-402-Version, PAYMENT-REQUIRED, X-Payment-Required, X-402-Payment-Required"
+    "Content-Type, Authorization, X-API-Key, X-PAYMENT, PAYMENT-SIGNATURE, X-402-Version, PAYMENT-REQUIRED, X-Payment-Required, X-402-Payment-Required"
   );
   c.header(
     "Access-Control-Expose-Headers",
-    "WWW-Authenticate, X-PAYMENT, PAYMENT-SIGNATURE, X-402-Version, PAYMENT-REQUIRED, X-Payment-Required, X-402-Payment-Required, PAYMENT-RESPONSE, Payment-Receipt, Location, Retry-After"
+    "WWW-Authenticate, X-PAYMENT, PAYMENT-SIGNATURE, X-402-Version, PAYMENT-REQUIRED, X-Payment-Required, X-402-Payment-Required, PAYMENT-RESPONSE, Payment-Receipt, Location, Retry-After, X-Kurox-Auth, X-Kurox-Tier"
   );
   c.header("X-402-Version", "2");
 
@@ -79,6 +80,23 @@ const paymentHandler = createMiddleware<{
   const path = c.req.path;
   const spec = ENDPOINT_MAP.get(path);
   if (!spec) {
+    return next();
+  }
+
+  const kuroxAuth = await authenticateKuroxHeaders(
+    c.req.header("authorization"),
+    c.req.header("x-api-key"),
+    process.env.KUROX_SIGNING_SECRET,
+  );
+  if (kuroxAuth.present && !kuroxAuth.valid) {
+    return c.json(
+      { status: "error", error: "INVALID_API_KEY", message: kuroxAuth.error, payment_collected: false },
+      (kuroxAuth.status || 401) as any,
+    );
+  }
+  if (kuroxAuth.valid && kuroxAuth.payload) {
+    c.header("X-Kurox-Auth", "bearer-api-key");
+    c.header("X-Kurox-Tier", kuroxAuth.payload.tier || "api_key");
     return next();
   }
 
