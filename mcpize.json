@@ -3,7 +3,7 @@
   "id": "rugshield-402",
   "name": "RugShield-402",
   "title": "RugShield 402 - Real-Time Token Honeypot & Rug-Pull Auditor",
-  "description": "On-chain token contract bytecode analyzer and pre-swap simulator for Base & Ethereum DEX pairs, preventing sandwich attacks, honeypots, and rug pulls.",
+  "description": "On-chain token contract bytecode analyzer and pre-swap simulator for Base Mainnet (EVM) & Solana Mainnet (SPL / Token-2022) DEX pairs, preventing honeypots, high sell-tax traps, and rug pulls.",
   "version": "1.0.0",
   "author": {
     "name": "AK Kurox",
@@ -22,6 +22,7 @@
     "dex",
     "token-security",
     "base",
+    "solana",
     "smart-contracts"
   ],
   "remotes": [
@@ -44,7 +45,7 @@
           "quota_requests_per_month": 2000,
           "features": [
             "2,000 token contract security audits / month",
-            "Base Mainnet EVM bytecode simulation",
+            "Base Mainnet EVM bytecode simulation & Solana Token-2022 inspection",
             "Buy / sell tax rate detection & transfer fee bounds",
             "Liquidity pool lock verification (Aerodrome/Uniswap)",
             "Standard community support"
@@ -60,7 +61,7 @@
             "20,000 real-time token contract audits / month",
             "Real-time DEX pair pre-swap execution simulation",
             "Blacklist function & hidden mint authority detection",
-            "Telegram bot API & ElizaOS trading agent integration",
+            "Unified sk_kurox_v1.* Bearer API key & x402 v2 billing",
             "Sub-100ms RPC caching & 99.9% uptime SLA"
           ]
         },
