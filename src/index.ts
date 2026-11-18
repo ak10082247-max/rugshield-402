@@ -362,6 +362,8 @@ const getDiscoveryManifest = (baseUrl: string) => ({
 
 app.get("/.well-known/x402.json", (c) => c.json(getDiscoveryManifest(getBaseUrl(c))));
 app.get("/.well-known/x402", (c) => c.json(getDiscoveryManifest(getBaseUrl(c))));
+app.get("/.well-known/x402-trust.txt", (c) => c.text("x402-trust-verification=v1:MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE2N_3Jb0vfMBJWvh0u-3aCVoALmiFZ135i3FgSDB7n2Ib-v6V_5CNH83Mv9Q_1ZR5UwXWotHyUEZ_0m2kcQqgsQ\n"));
+app.get("/.well-known/nohumans-claim", (c) => c.text("1323d01eb830e861f17c7977fff22234f8d9a7787d7295bb"));
 
 const CANONICAL_FACEABOT_TOOLS = [
   {
