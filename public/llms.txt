@@ -9,7 +9,9 @@
 
 ## 1. Service Specifications
 - **Service Name**: RugShield 402 (`v1.3.0`)
-- **Protocol**: x402 V2 HTTP Micropayment Protocol (Base & Solana)
+- **Protocol**: x402 V2 HTTP Micropayment Protocol (Base & Solana USDC) + Stripe MPP (`method="stripe"`, `networkId="profile_61VnzdDTGkNiFINqdA6VnzdDR1E92xUACS0Twn2zoUBE"`)
+- **Stripe Business Profile**: `https://stripe.com/@kurox_x402`
+- **Unified API Pass (Card SPT)**: `https://agentfuel402.ak10082247.workers.dev/v1/mpp/pass` ($0.50 USD 7-day pass / $5.00 Starter / $19.00 Pro -> issues `sk_kurox_v1.*` Bearer key valid across RugShield-402, CanaryGuard-402 & AgentFuel402)
 - **Base URL**: `https://rugshield-402.onrender.com`
 - **Discovery**: `https://rugshield-402.onrender.com/.well-known/x402.json`
 - **OpenAPI 3.0.3**: `https://rugshield-402.onrender.com/openapi.json`

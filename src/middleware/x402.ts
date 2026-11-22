@@ -6,6 +6,18 @@ import { CONFIG, ENDPOINT_MAP, ENDPOINT_SPECS, type EndpointPriceSpec } from "..
 import { fulfillmentStore, FulfillmentStorageError, paymentId, requestFingerprint, snapshotResponse, restoreResponse } from "./fulfillment.js";
 import { authenticateSolanaTransaction } from "./solana_authorization.js";
 import { authenticateKuroxHeaders } from "./kurox_auth.js";
+import {
+  MppCredentialError,
+  STRIPE_MIN_USD_CENTS,
+  buildRugShieldMppDescription,
+  buildStripeChargeChallengeSync,
+  computeMppAmountCents,
+  extractPaymentSchemeHeader,
+  parsePaymentCredentialToken,
+  settleViaAgentFuelRelay,
+  verifyStripeChallengePreFlight,
+  type NormalizedMppCredential,
+} from "./stripe_mpp.js";
 
 // Replay protection cache: max 100,000 items, TTL 24 hours (86,400,000 ms)
 const replayCache = new LRUCache<string, boolean>({
@@ -61,11 +73,11 @@ const paymentHandler = createMiddleware<{
   c.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   c.header(
     "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, X-API-Key, X-PAYMENT, PAYMENT-SIGNATURE, X-402-Version, PAYMENT-REQUIRED, X-Payment-Required, X-402-Payment-Required"
+    "Content-Type, Authorization, Payment-Authorization, X-API-Key, X-PAYMENT, PAYMENT-SIGNATURE, X-402-Version, PAYMENT-REQUIRED, X-Payment-Required, X-402-Payment-Required"
   );
   c.header(
     "Access-Control-Expose-Headers",
-    "WWW-Authenticate, X-PAYMENT, PAYMENT-SIGNATURE, X-402-Version, PAYMENT-REQUIRED, X-Payment-Required, X-402-Payment-Required, PAYMENT-RESPONSE, Payment-Receipt, Location, Retry-After, X-Kurox-Auth, X-Kurox-Tier"
+    "WWW-Authenticate, X-PAYMENT, PAYMENT-SIGNATURE, X-402-Version, PAYMENT-REQUIRED, X-Payment-Required, X-402-Payment-Required, PAYMENT-RESPONSE, Payment-Receipt, Location, Retry-After, X-Kurox-Auth, X-Kurox-Tier, X-Kurox-Api-Key, X-Kurox-Api-Key-Expires"
   );
   c.header("X-402-Version", "2");
 
@@ -111,6 +123,66 @@ const paymentHandler = createMiddleware<{
   if (isRapidApi || hasValidApiKey) {
     c.header("X-RapidAPI-Bypass", "active");
     return next();
+  }
+
+  // Branch 0: Stripe MPP (Authorization: Payment / Payment-Authorization: Payment)
+  const mppAuthHeader = extractPaymentSchemeHeader(
+    c.req.header("authorization"),
+    c.req.header("payment-authorization"),
+  );
+  if (mppAuthHeader) {
+    const baseUrl = getBaseUrl(c);
+    const realm = new URL(baseUrl).hostname;
+    const minCents = computeMppAmountCents(spec.amountMicroUnits);
+    const secretKey = process.env.KUROX_SIGNING_SECRET;
+
+    let credential: NormalizedMppCredential;
+    try {
+      credential = parsePaymentCredentialToken(mppAuthHeader);
+      verifyStripeChallengePreFlight(credential, secretKey, [realm, "rugshield-402.onrender.com"], minCents);
+    } catch (err: any) {
+      if (err instanceof MppCredentialError && err.status === 503) {
+        return c.json({ status: "error", error: err.code, message: err.message, payment_collected: false }, 503);
+      }
+      return return402Challenge(c, spec, err?.message || "Invalid Stripe MPP credential");
+    }
+
+    await next();
+    if (c.res.status < 200 || c.res.status >= 300) {
+      return c.res;
+    }
+
+    const resBodyText = await c.res.text();
+    let parsedBody: any = null;
+    try {
+      parsedBody = JSON.parse(resBodyText);
+    } catch {}
+    if (parsedBody && (parsedBody.status === "error" || parsedBody.error || parsedBody.fulfillment_complete === false)) {
+      return c.json({ error: "FULFILLMENT_FAILED", message: "Analysis did not complete; no settlement attempted.", payment_collected: false }, 503);
+    }
+
+    try {
+      const settled = await settleViaAgentFuelRelay({
+        service: "rugshield-402",
+        expectedRealm: realm,
+        credential,
+        minAmountCents: minCents,
+        secretKey: secretKey!,
+      });
+      X402_METRICS.settlements++;
+      const outHeaders = new Headers(c.res.headers);
+      outHeaders.set("Payment-Receipt", settled.receiptHeader);
+      outHeaders.set("X-Kurox-Auth", "stripe-mpp");
+      outHeaders.set("X-Kurox-Tier", settled.tier || "mpp_pass");
+      outHeaders.set("X-Kurox-Api-Key", settled.apiKey);
+      outHeaders.set("X-Kurox-Api-Key-Expires", settled.apiKeyExpiresAt);
+      return new Response(resBodyText, { status: c.res.status, headers: outHeaders });
+    } catch (err: any) {
+      if (err instanceof MppCredentialError && err.status === 503) {
+        return c.json({ error: err.code, message: err.message, payment_collected: "unknown" }, 503);
+      }
+      return return402Challenge(c, spec, err?.message || "Stripe MPP settlement rejected");
+    }
   }
 
   // Check incoming payment headers
@@ -743,23 +815,17 @@ function buildRugShieldTeaser(spec: EndpointPriceSpec, tokAddr: string) {
 
 function return402Challenge(c: any, spec: EndpointPriceSpec, reason?: string) {
   X402_METRICS.challenges++;
-  const resUrl = `${getBaseUrl(c)}${spec.path}`;
+  const baseUrl = getBaseUrl(c);
+  const resUrl = `${baseUrl}${spec.path}`;
+  const realm = new URL(baseUrl).hostname;
+  const mppBuilt = buildStripeChargeChallengeSync({
+    realm,
+    amountCents: computeMppAmountCents(spec.amountMicroUnits),
+    description: buildRugShieldMppDescription(spec.description),
+    secretKey: process.env.KUROX_SIGNING_SECRET,
+  });
 
-  const challengeId = randomUUID();
-  const reqPayload = {
-    amount: spec.amountMicroUnits,
-    chainId: CONFIG.chainId,
-    currency: CONFIG.usdcAddress,
-    decimals: 6,
-    recipient: CONFIG.merchantAddress,
-  };
-  const reqB64 = Buffer.from(JSON.stringify(reqPayload)).toString("base64url");
-  const expires = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-
-  c.header(
-    "WWW-Authenticate",
-    `Payment id="${challengeId}", realm="rugshield-402.onrender.com", method="evm", intent="charge", request="${reqB64}", expires="${expires}"`
-  );
+  c.header("WWW-Authenticate", mppBuilt.headerValue);
   c.header("X-402-Version", "2");
 
   const resourceObj = {

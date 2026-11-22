@@ -5,6 +5,7 @@ import { serve } from "@hono/node-server";
 import { z } from "zod";
 import { CONFIG, AGENT_CONTINUATION, ENDPOINT_SPECS, ENDPOINT_MAP } from "./config.js";
 import { x402Middleware, X402_METRICS, getBaseUrl } from "./middleware/x402.js";
+import { STRIPE_MIN_USD_CENTS, resolveStripeProfileId } from "./middleware/stripe_mpp.js";
 import { deliveryRecorderMiddleware, getRecentDeliveries, getPaidDeliveries } from "./middleware/delivery_recorder.js";
 import { scanToken } from "./services/simulator.js";
 import { scanSolanaToken, SolanaScanError } from "./services/solana_scan.js";
@@ -242,6 +243,7 @@ app.get("/openapi.json", (c) => {
           required: true,
           content: {
             "application/json": {
+              example: spec.exampleInput || { token_address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" },
               schema: {
                 type: "object",
                 properties: {
@@ -253,7 +255,7 @@ app.get("/openapi.json", (c) => {
         },
         responses: {
           "200": { description: `${spec.summary} executed successfully` },
-          "402": { description: `Payment Required: ${spec.priceUsd} USDC on Base mainnet (EIP-155:8453)` },
+          "402": { description: `Payment Required: ${spec.priceUsd} USDC on Base/Solana OR $0.50 USD Stripe MPP (method=stripe, includes 7d Unified Kurox API Key)` },
         },
         "x-payment-info": {
           network: `eip155:${CONFIG.chainId}`,
@@ -340,6 +342,15 @@ const getDiscoveryManifest = (baseUrl: string) => ({
     solana_facilitator: CONFIG.payaiFacilitator,
     solana_fee_payer: CONFIG.solanaFeePayer,
     scheme: "exact",
+  },
+  mpp: {
+    method: "stripe",
+    intent: "charge",
+    networkId: resolveStripeProfileId(),
+    businessProfile: "https://stripe.com/@kurox_x402",
+    paymentMethodTypes: ["card"],
+    minAmountCents: STRIPE_MIN_USD_CENTS,
+    unifiedPassEndpoint: "https://agentfuel402.ak10082247.workers.dev/v1/mpp/pass",
   },
   bazaar: {
     category: "security",
@@ -689,15 +700,22 @@ app.post("/mcp", async (c) => {
       const route = ["rugshield_pre_swap_scan", "rugshield_scan", "check_honeypot", "analyze_liquidity"].includes(toolName) ? "/v1/scan" : matchedSpec?.path;
       if (route) {
         const headers = new Headers({ "Content-Type": "application/json", "user-agent": "rugshield-mcp-client" });
-        for (const name of ["payment-signature", "x-payment", "authorization", "x-api-key", "x-rapidapi-proxy-secret"]) {
+        for (const name of ["payment-signature", "x-payment", "authorization", "payment-authorization", "x-api-key", "x-rapidapi-proxy-secret"]) {
           const value = c.req.header(name); if (value) headers.set(name, value);
+        }
+        const metaMppCred = body.params?._meta?.["org.paymentauth/credential"];
+        if (!headers.has("authorization") && !headers.has("payment-authorization") && metaMppCred) {
+          const encodedCred = typeof metaMppCred === "string"
+            ? metaMppCred
+            : Buffer.from(JSON.stringify(metaMppCred)).toString("base64url");
+          headers.set("authorization", encodedCred.startsWith("Payment ") ? encodedCred : `Payment ${encodedCred}`);
         }
         const origin = new URL(getBaseUrl(c));
         headers.set("host", origin.host);
         headers.set("x-forwarded-proto", origin.protocol.slice(0, -1));
         const response = await app.request(new Request(`${origin.origin}${route}`, { method: "POST", headers, body: JSON.stringify(args) }));
         const data = await response.json();
-        for (const name of ["payment-required", "payment-response", "x-payment-required", "x-kurox-auth", "x-kurox-tier"]) {
+        for (const name of ["www-authenticate", "payment-required", "payment-response", "payment-receipt", "x-payment-required", "x-kurox-auth", "x-kurox-tier", "x-kurox-api-key", "x-kurox-api-key-expires"]) {
           const value = response.headers.get(name); if (value) c.header(name, value);
         }
         return c.json({ jsonrpc: "2.0", id, result: { isError: !response.ok, content: [{ type: "text", text: JSON.stringify(data) }], structuredContent: data } }, response.status as any);
